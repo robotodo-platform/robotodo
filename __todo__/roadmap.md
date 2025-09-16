@@ -1,0 +1,4 @@
+- [-] curobo: motion gen
+- [-] pose gen
+- [ ] curobo: collision avoidance
+- [ ] curobo: mpc

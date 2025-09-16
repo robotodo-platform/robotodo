@@ -1,0 +1,52 @@
+[build-system]
+requires = [
+    "setuptools", 
+    "setuptools_scm",
+]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "robotodo"
+dynamic = ["version"]
+requires-python = ">= 3.11"
+readme = "README.md"
+license = {file = "LICENSE.txt"}
+dependencies = [
+    # TODO
+    "bracex",
+    "wcmatch",
+    # TODO
+    "einops",
+]
+
+[project.optional-dependencies]
+features = [
+
+    # TODO
+    "nest_asyncio",
+    "isaacsim[all]>=5.0.0,<=6.0.0",
+    "warp-lang",
+    # TODO
+    # TODO cc1plus error: conda install -c conda-forge cxx-compiler
+    "ninja", # NOTE required for jit compilation of curobo torch exts
+    "nvidia_curobo @ git+https://github.com/NVlabs/curobo.git@v0.7.7",
+]
+test = [
+    "pytest", 
+]
+docs = [
+    "jupyter-book", 
+    "sphinxcontrib-mermaid",
+]
+
+[tool.setuptools.packages.find]
+where = ["packages"]
+namespaces = true
+
+#[tool.setuptools_scm]
+#version_scheme = "no-guess-dev"
+
+[tool.pytest.ini_options]
+minversion = "6.0"
+testpaths = ["packages"]
+addopts = "--import-mode=importlib --doctest-modules"
