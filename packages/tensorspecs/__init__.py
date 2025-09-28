@@ -46,7 +46,7 @@ def make_size_mapping(
                 )
                 return {
                     dims[i]: None,
-                    **rest,
+                    **(rest if rest is not None else dict()),
                 }
         else:
             if i >= len(sizes):
@@ -94,8 +94,8 @@ import re
 from typing import Collection, Hashable, Mapping, NamedTuple
 
 
-# TODO next
-class ShapeExpr:
+# TODO next: mv Shape
+class _TODONextShape:
     """
     Shape.
     """
@@ -183,7 +183,7 @@ class ShapeExpr:
 
         .. doctest::
 
-            >>> str(ShapeExpr(size_mapping={'a': 2, 'b': None, 'c?': None}, optional_dims={'c?'}))
+            >>> str(ShapeExpr({'a': 2, 'b': None, 'c?': None}, optional_dims={'c?'}))
             'a[2] b c?'
 
         """
@@ -192,6 +192,10 @@ class ShapeExpr:
             f"{name}[{size}]" if size is not None else name
             for name, size in self.sizes.items()
         )
+    
+    def __repr__(self):
+        # TODO
+        return f"""{_TODONextShape.__qualname__}({self.sizes}, optional_dims={self.optional_dims})"""
     
     # TODO
     # TODO tuple shape_like make_size_mapping
@@ -208,6 +212,7 @@ class ShapeExpr:
 from typing import Sequence, TypeAlias, Hashable, Mapping
 
 
+# TODO deprecate???
 # TODO frozen
 # TODO mapping !!!!
 class Shape:
@@ -230,7 +235,7 @@ class Shape:
         )
         if size_mapping is None:
             # TODO better message??
-            raise ValueError(f"Invalid size mapping: {size_mapping}")
+            raise ValueError(f"Invalid size mapping inferred from {sizes}: {size_mapping}")
         return cls(size_mapping)
 
     # TODO
@@ -249,7 +254,7 @@ class Shape:
         return tuple(self._size_mapping.keys())
 
     def __repr__(self):
-        return f"Shape({self._size_mapping})"
+        return f"{Shape.__qualname__}({self._size_mapping})"
     
     def __iter__(self):
         return iter(self.sizes)
@@ -312,12 +317,13 @@ class TestDimensionExpr:
 
 
 import collections
-from typing import Iterable, Mapping, Literal, Type, Hashable, Annotated, Collection
+from typing import Any, Iterable, Mapping, Literal, Type, Hashable, Annotated, Collection
 
 import numpy
 
 # TODO !!!
-from jaxtyping import Array as TensorLike
+import jax
+TensorLike = jax.Array
 
 
 class TensorSpec(BaseSpec):
@@ -334,7 +340,7 @@ class TensorSpec(BaseSpec):
 
     """
 
-    # TODO
+    # TODO next: no more optional dim nonsense - use shape directly
     def __init__(
         self,
         spec_or_expr: "TensorSpec | str | None" = None,
@@ -757,6 +763,21 @@ class TensorTableSpec(BaseSpec, Mapping):
         raise NotImplementedError
 
 
+from typing import Protocol, Mapping
+
+class TensorTableLike(Mapping):
+    """
+    This protocol class describes any data structure that 
+    can be converted to a tensor table.
+
+    TODO doc
+    
+    """
+
+    def __class_getitem__(cls, spec: TensorTableSpec):
+        return Annotated[Mapping, spec]
+
+
 import numpy
 
 def as_tensor(tensor_like: TensorLike):
@@ -776,11 +797,14 @@ class BoxSpec(TensorSpec):
         self,
         spec_or_expr: TensorSpec | str | None = None,
         *,
+        # TODO support tensors
         bounds: tuple[TensorLike | None, TensorLike | None] | None = None,
+        # shape: ShapeLike | None = None,
         **tensor_spec_kwds,
     ):
         super().__init__(
             spec_or_expr,
+            # shape=shape,
             **tensor_spec_kwds,
         )
 
@@ -790,6 +814,17 @@ class BoxSpec(TensorSpec):
             tuple((None, None))
         )
 
+        # TODO
+        self.shape = Shape.from_sizes(
+            numpy.broadcast_shapes(
+                *(s for s in self.shape.sizes if s is not None),
+                *(b.shape for b in self.bounds if b is not None),
+            ),
+            dims=self.shape.dims,
+            optional_dims=self.optional_dims,
+        )
+
+        # TODO make optional?
         # TODO check shape?
         if not any(b is None for b in self.bounds):
             low, high = numpy.broadcast_arrays(*self.bounds)
@@ -798,7 +833,7 @@ class BoxSpec(TensorSpec):
                     f"Lower bound must be less than or equal to upper bound. "
                     f"Invalid bounds: {self.bounds}"
                 )
-            
+
     def random(
         self, 
         seed: int | None = None,

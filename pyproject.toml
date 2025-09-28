@@ -17,6 +17,10 @@ dependencies = [
     "wcmatch",
     # TODO
     "einops",
+
+    # TODO tensorspecs
+    "jax",
+    "jaxtyping",
 ]
 
 [project.optional-dependencies]

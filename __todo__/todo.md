@@ -30,6 +30,10 @@
     settings.get_settings_dictionary()
     settings.get("/app/python/logSysStdOutput")
     settings.get("/app/enableStdoutOutput")
+
+
+    ext_manager = kernel._app_framework.app.get_extension_manager()
+    ext_manager.set_extension_enabled_immediate("isaacsim.exp.base", True)
     ```
 
 - TODO: agilex curobo demo
@@ -293,8 +297,11 @@ Pose(p=[-2, 3, 4], q=[.23, .231, .321, .231]).inv() #* Pose(p=[1, 2, 3], q=[.32,
 ```python
 
 class FrankaPanda:
-    # TODO
-    def compute_finger_aperture(self):
+    @property
+    def pending_tasks(self) -> deque[asyncio.Future]:
+        ...
+
+    def drive(self, dof_positions):
         ...
 
     def reach(self, pose):
@@ -304,8 +311,224 @@ class FrankaPanda:
     def grasp(self, candidate_poses):
         ...
 
+    # TODO
+    def compute_finger_aperture(self):
+        ...    
+
+
+
+```
+
+
+collision sphere gen:
+`isaacsim.robot_setup.xrdf_editor.extension`
+https://docs.isaacsim.omniverse.nvidia.com/4.5.0/py/source/extensions/isaacsim.robot_motion.lula/docs/index.html#lula.create_collision_sphere_generator
+
+
+
+```
+
+import omni
+_, config = omni.kit.commands.execute("URDFCreateImportConfig")
+dir(config)
+
+```
+
+
+```
+from isaacsim.core.utils.stage import add_reference_to_stage, get_stage_units
+from isaacsim.storage.native import get_assets_root_path
+
+# asset_path = get_assets_root_path() + "/Isaac/Robots/FrankaRobotics/FrankaPanda/franka.usd"
+# robot1 = add_reference_to_stage(usd_path=asset_path, prim_path="/World/Franka_1")
+mug = add_reference_to_stage(usd_path="https://omniverse-content-production.s3-us-west-2.amazonaws.com/Assets/Isaac/5.0/Isaac/Props/Mugs/SM_Mug_A2.usd", prim_path="/World/Mug")
+mug
+```
+
+```
+
+
+entity = Entity("/Path/To/SomeCreatedRigidBody", scene=scene)
+entity.physics
+entity.visuals
+
+
+# returns a view of the body
+entity = RigidBody("/Path/To/SomeCreatedRigidBody", scene=scene)
+# creates the body and returns a view
+entity = RigidBody(
+    "/Path/To/SomeTODORigidBody", 
+    scene=scene,
+)
+
+entity.geometry
+entity.pose
+entity.contacts
+
+```
+
+
+```
+[op.GetOpType() for op in x.GetOrderedXformOps()]
+
+
+prim.GetProperties()
+import pxr
+
+x = pxr.UsdGeom.Xformable(prim)
+%timeit -n 100 x.ClearXformOpOrder()
+x.AddTransformOp
+# o = x.GetTransformOp("xformOp:transform")
+
+x.GetXformOpOrderAttr()
+x.GetOrderedXformOps()
+scene._kernel.omni.physx.scripts.physicsUtils.set_or_add_translate_op
+%%timeit -n 10
+# %%prun
+
+import numpy
+from omni.physx.scripts import physicsUtils
+from pxr import Gf
+
+
+
+with pxr.Sdf.ChangeBlock():
+    for _ in range(1024):
+        xformable = pxr.UsdGeom.Xformable(prim)
+
+        physicsUtils.set_or_add_translate_op(
+            xformable,
+            # Gf.Vec3f(.0, .0, 1.0),
+            numpy.array([.0, .0, 1.0]),
+        )
+        physicsUtils.set_or_add_orient_op(
+            xformable,
+            Gf.Quatf(1.0, Gf.Vec3f(0.0, 0.0, 0.0)),  # identity quat
+        )
+
+        # physicsUtils.setup_transform_as_scale_orient_translate(xformable)
+        # physicsUtils.set_or_add_scale_orient_translate(
+        #     xformable,
+        #     Gf.Vec3f(.5, 1.0, 1.0),             # scale
+        #     Gf.Quatf(1.0, Gf.Vec3f(0.0, 0.0, 0.0)),  # orient (identity quat)
+        #     Gf.Vec3f(.0, .0, 1.0)              # translate
+        # )
+        # physicsUtils.set_or_add_scale_orient_translate(
+        #     xformable,
+        #     Gf.Vec3f(1., 1.0, 1.0),             # scale
+        #     Gf.Quatf(1.0, Gf.Vec3f(0.0, 0.0, 0.0)),  # orient (identity quat)
+        #     Gf.Vec3f(.0, 1.0, 2.0)              # translate
+        # )
+import numpy
+Gf.Vec3f
+a = numpy.array([[1, 2, 3], [1, 2, 3]])
+%timeit -n 1000 pxr.Vt.Vec3fArray.FromNumpy(a)
+%timeit -n 1000 pxr.Gf.Vec3f(a.tolist()[0])
+list(pxr.Vt.Vec3fArray.FromNumpy(a))
+
+q = numpy.array([1, 2, 3, 4])
+
+pxr.Vt.QuatfArrayFromBuffer(q)
+%timeit -n 1000 pxr.Vt.Vec3fArrayFromBuffer(a)
+%timeit -n 10 pxr.UsdGeom.Xformable(prim)
+xformable.GetOrientOp()
+xformable.GetOrientOp()
+physicsUtils.set_or_add_scale_orient_translate?
+%prun --help
+physicsUtils.set_or_add_scale_orient_translate(
+    pxr.UsdGeom.Xformable(prim),
+    Gf.Vec3f(.1, 1.0, 1.0),             # scale
+    Gf.Quatf(1.0, Gf.Vec3f(0.0, 0.0, 0.0)),  # orient (identity quat)
+    Gf.Vec3f(.0, .0, 1.0)              # translate
+)
+```
+
+```
+# NOTE example: passive force compensation
+
+async for _ in scene.on_update:
+    forces = (
+        art.driver.compute_dof_passive_gravity_forces()
+        + art.driver.compute_dof_passive_coriolis_and_centrifugal_forces()
+    )
+
+    art.driver.dof_forces = forces
+```
+
+```
+pxr.UsdPhysics.DriveAPI.Get(joint_driveable_prim, "angular")
+```
+
+
+```
+
+
+# TODO doc
+_ = """
+
+
+planner = MotionPlanner(panda)
+action = planner.compute_action({
+    "dof_positions": panda.dof_positions,
+    "target_poses": panda.root_pose.inv() * Pose(p=[1, 1, 1]),
+})
+
+
+for a in action.iter(dim="time"):
+    panda.dof_positions = a["dof_positions"]
+    # TODO
+    await anext(scene.on_update)
+
+
+"""
+
+```
+
+
+
+
+necesito??
+```
+class BasePlanner:
+    observation_spec: ...
+    action_spec: ...
     
+    def compute_action(self, observation):
+        ...
+
+```
 
 
+usd layers
+```
+from pxr import Usd, Sdf
 
+# Get the root layer
+# stage: Usd.Stage = Usd.Stage.CreateInMemory()
+root_layer: Sdf.Layer = scene._stage.GetRootLayer()
+root_layer.GetLoadedLayers()
+
+# s = scene._usd_current_stage
+# e = s.GetEditTarget()
+# e.GetLayer()
+
+# # s.SetEditTarget(scene._usd_current_stage.GetSessionLayer())
+import pxr
+
+editable_layer = pxr.Sdf.Layer.CreateAnonymous()
+
+stage = scene._usd_current_stage
+root_layer = stage.GetRootLayer()
+root_layer.subLayerPaths.append(editable_layer.identifier)
+
+editable_layer.SetPermissionToEdit(True)
+stage.SetEditTarget(editable_layer)
+
+```
+
+
+```
+from isaacsim.core.utils.stage import open_stage
+
+open_stage("https://omniverse-content-production.s3-us-west-2.amazonaws.com/Assets/Isaac/5.0/Isaac/Environments/Grid/default_environment.usd")
 ```
