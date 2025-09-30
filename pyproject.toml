@@ -21,11 +21,19 @@ dependencies = [
     # TODO tensorspecs
     "jax",
     "jaxtyping",
+
+    # TODO mv pi0
+    "jax",
+    "jaxtyping",
+    "flax!=0.11,<0.13.0",
+    "fsspec[gcs]>=2024.6.0",
+    "orbax-checkpoint>=0.11.13",
+    "sentencepiece",
+    "platformdirs",
 ]
 
 [project.optional-dependencies]
 features = [
-
     # TODO
     "nest_asyncio",
     "isaacsim[all]>=5.0.0,<=6.0.0",
@@ -39,7 +47,7 @@ test = [
     "pytest", 
 ]
 docs = [
-    "jupyter-book", 
+    "jupyter-book",
     "sphinxcontrib-mermaid",
 ]
 
