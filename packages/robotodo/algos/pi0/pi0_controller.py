@@ -485,6 +485,7 @@ class Pi0Controller:
     def nn(self):
         return self._nn
     
+    # TODO FIXME perf: jit the whole thing
     # TODO Impl[ObservationSpec]
     def compute_action(
         self, 
