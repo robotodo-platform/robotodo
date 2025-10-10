@@ -3,6 +3,11 @@
 import dataclasses
 
 
+# TODO
+@dataclasses.dataclass(slots=True)
+class Plane:
+    ...
+
 
 @dataclasses.dataclass(slots=True)
 class PolygonMesh:

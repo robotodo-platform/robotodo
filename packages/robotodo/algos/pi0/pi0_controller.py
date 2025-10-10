@@ -522,6 +522,7 @@ class Pi0Controller:
             maybe_batch_observation,
         )
 
+        # TODO FIXME: perf: use jit
         batch_observation_nn = Pi0Controller.ObservationSpecTransform.encode(
             target_spec=self._nn.observation_spec,
             source_spec=self._observation_spec,
@@ -543,6 +544,7 @@ class Pi0Controller:
             denoising_num_steps=diffusion_num_steps,
         )
 
+        # TODO FIXME: perf: use jit
         batch_action = Pi0Controller.ActionSpecTransform.decode(
             target_spec=self._action_spec,
             source_spec=self._nn.action_spec,

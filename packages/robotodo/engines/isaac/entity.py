@@ -1,23 +1,340 @@
-
+import asyncio
+import contextlib
+import dataclasses
 import functools
 
 import numpy
+import torch
+
 from robotodo.utils.pose import Pose
 from robotodo.utils.geometry import PolygonMesh
+from robotodo.utils.event import BaseSubscriptionPartialAsyncEventStream
 from robotodo.engines.core.entity_selector import PathExpression, PathExpressionLike
 
 from .scene import Scene
 
 
+# TODO TensorTable
+@dataclasses.dataclass
+class ContactPoint:
+    """
+    TODO doc
+    """
+
+    position: ...
+    """The position of the contact point in world frame."""
+    impulse: ...
+    """TODO The impulse applied."""
+    normal: ...
+    """The direction of impulse."""
+    separation: ...
+    """The minimum distance between two shapes involved in the contact."""
+
+# TODO TensorTable
+@dataclasses.dataclass
+class ContactAnchor:
+    """
+    TODO doc
+    """
+
+    position: ...
+    """The position of the contact friction anchor in world frame."""
+    impulse: ...
+    """TODO The impulse applied."""
+
+@dataclasses.dataclass
+class Contact:
+    """
+    TODO doc
+
+    """
+
+    entity0: "Entity"
+    """TODO doc"""
+    entity1: "Entity"
+    """TODO doc"""
+    points: ContactPoint | None = None
+    """Contact points. `None` to indicate contact loss."""
+    anchors: ContactAnchor | None = None
+    """Contact friction anchors. `None` to indicate contact loss."""
+
+
+class EntityContactAsyncEventStream(
+    BaseSubscriptionPartialAsyncEventStream[Contact]
+):
+    def __init__(self, entity: "Entity"):
+        self._entity = entity
+
+    # TODO
+    # def _isaac_physx_contact_report_callback(
+    #     self,
+    #     contact_headers: list, 
+    #     contact_datas: list, 
+    #     friction_anchors: list | None = None,
+    # ):
+    #     pass
+
+    @contextlib.contextmanager
+    def subscribe(self, callable):
+        scene = self._entity._scene
+        pxr = scene._kernel.pxr
+
+        for prim in self._entity._usd_prims:
+            if prim.HasAPI(pxr.PhysxSchema.PhysxContactReportAPI):
+                api = pxr.PhysxSchema.PhysxContactReportAPI(prim)
+            else:
+                api = pxr.PhysxSchema.PhysxContactReportAPI.Apply(prim)
+            # TODO necesito???
+            api.CreateThresholdAttr().Set(0)
+
+        # TODO cache?
+        def contact_report_callback(
+            contact_headers, 
+            contact_datas, 
+            friction_anchors,
+        ):
+            """
+            TODO doc
+
+            """
+
+            for contact_header in contact_headers:
+                path_entity0 = pxr.PhysicsSchemaTools.intToSdfPath(contact_header.collider0)
+                path_entity1 = pxr.PhysicsSchemaTools.intToSdfPath(contact_header.collider1)
+
+                # TODO match ancesters as well?
+                if not (self._entity._path.match(str(path_entity0)) or self._entity._path.match(str(path_entity1))):
+                    continue
+
+                entity0 = Entity(path_entity0, scene=scene)
+                entity1 = Entity(path_entity1, scene=scene)
+
+                # TODO https://docs.omniverse.nvidia.com/kit/docs/omni_physics/108.0/extensions/runtime/source/omni.physx/docs/api/python.html#omni.physx.bindings._physx.ContactEventType
+                match contact_header.type:
+                    case contact_header.type.CONTACT_LOST:
+                        contact = Contact(
+                            entity0=entity0,
+                            entity1=entity1,
+                        )
+                    case contact_header.type.CONTACT_FOUND | contact_header.type.CONTACT_PERSIST:
+                        # TODO 
+                        # actor_pair = (pxr.PhysicsSchemaTools.intToSdfPath(contact_header.actor0), pxr.PhysicsSchemaTools.intToSdfPath(contact_header.actor1))
+                        # collider_pair = (pxr.PhysicsSchemaTools.intToSdfPath(contact_header.collider0), pxr.PhysicsSchemaTools.intToSdfPath(contact_header.collider1))
+
+
+                        contact_data_offset = contact_header.contact_data_offset
+                        num_contact_data = contact_header.num_contact_data
+
+                        positions = []
+                        impulses = []
+                        normals = []
+                        separations = []
+
+                        for i in range(contact_data_offset, contact_data_offset + num_contact_data):
+                            contact_data = contact_datas[i]
+                            # TODO ref https://docs.omniverse.nvidia.com/kit/docs/omni_physics/108.0/extensions/runtime/source/omni.physx/docs/api/python.html#omni.physx.bindings._physx.ContactData
+                            # TODO this belongs to the header???
+                            # pxr.PhysicsSchemaTools.intToSdfPath(contact_data.material0), pxr.PhysicsSchemaTools.intToSdfPath(contact_data.material1)
+                            # TODO only valid for mesh; necesito? positions should be enough?>??
+                            # contact_data.face_index0, contact_data.face_index1
+                            normals.append(contact_data.normal)
+                            impulses.append(contact_data.impulse)
+                            positions.append(contact_data.position)
+                            separations.append(contact_data.separation)
+
+                        contact_point = ContactPoint(
+                            position=numpy.asarray(positions),
+                            impulse=numpy.asarray(impulses),
+                            normal=numpy.asarray(normals),
+                            separation=numpy.asarray(separations),
+                        )
+
+
+                        impulses = []
+                        positions = []
+
+                        if friction_anchors is not None:
+                            friction_anchors_offset = contact_header.friction_anchors_offset
+                            num_friction_anchors_data = contact_header.num_friction_anchors_data
+
+                            for i in range(friction_anchors_offset, friction_anchors_offset + num_friction_anchors_data):
+                                friction_anchor = friction_anchors[i]
+                                # TODO ref https://docs.omniverse.nvidia.com/kit/docs/omni_physics/108.0/extensions/runtime/source/omni.physx/docs/api/python.html#omni.physx.bindings._physx.FrictionAnchor
+                                impulses.append(friction_anchor.impulse)
+                                positions.append(friction_anchor.position)
+
+                        contact_anchor = ContactAnchor(
+                            position=numpy.asarray(positions),
+                            impulse=numpy.asarray(impulses),
+                        )
+
+                        contact = Contact(
+                            entity0=entity0,
+                            entity1=entity1,
+                            points=contact_point,
+                            anchors=contact_anchor,
+                        )
+                    case _:
+                        # TODO
+                        continue
+
+                result = callable(contact)
+                if asyncio.iscoroutine(result):
+                    asyncio.create_task(result)
+
+        sub = (
+            scene._isaac_physx_simulation
+            .subscribe_full_contact_report_events(
+                contact_report_callback
+            )
+        )
+        yield
+        sub.unsubscribe()
+
+
+class RigidBody:
+    def __init__(self, entity: "Entity"):
+        self._entity = entity
+    
+    @functools.cached_property
+    def _isaac_physics_rigid_body_view_cache(self):
+        try:
+            paths = self._entity._scene.resolve(self._entity._path)
+            self._entity._scene._isaac_physx_simulation.flush_changes()
+            isaac_physics_tensor_view = self._entity._scene._isaac_physics_tensor_view
+            rigid_body_view = (
+                isaac_physics_tensor_view
+                .create_rigid_body_view(paths)
+            )
+            assert rigid_body_view is not None
+            assert rigid_body_view.check()
+            def should_invalidate():
+                return not (
+                    isaac_physics_tensor_view.is_valid
+                    and rigid_body_view.check()
+                )
+        except Exception as error:
+            raise RuntimeError(
+                f"Failed to create rigid body physics view from "
+                f"resolved USD paths (are they valid?): {paths}"
+            ) from error
+        return rigid_body_view, should_invalidate
+    
+    @property
+    def _isaac_physics_rigid_body_view(self):
+        while True:
+            rigid_body_view, should_invalidate = self._isaac_physics_rigid_body_view_cache
+            if should_invalidate():
+                del self._isaac_physics_rigid_body_view_cache
+            else:
+                return rigid_body_view
+
+    @property
+    def enabled(self):
+        pxr = self._entity._scene._kernel.pxr
+
+        prims = self._entity._usd_prims
+
+        # TODO use numpy.empty for performance??
+        value = []
+        for prim in prims:
+            if not prim.HasAPI(pxr.UsdPhysics.RigidBodyAPI):
+                value.append(False)
+            else:
+                value.append(bool(
+                    pxr.UsdPhysics.RigidBodyAPI(prim)
+                    .CreateRigidBodyEnabledAttr()
+                    .Get()
+                ))
+
+        return numpy.asarray(value)
+
+    @enabled.setter
+    def enabled(self, value: bool):
+        pxr = self._entity._scene._kernel.pxr
+
+        prims = self._entity._usd_prims
+
+        for prim, v in zip(
+            prims,
+            numpy.broadcast_to(value, shape=len(prims)),
+        ):
+            if not prim.HasAPI(pxr.UsdPhysics.RigidBodyAPI):
+                api = pxr.UsdPhysics.RigidBodyAPI.Apply(prim)
+            else:
+                api = pxr.UsdPhysics.RigidBodyAPI(prim)
+            api.CreateRigidBodyEnabledAttr().Set(bool(v))
+        
+    @property
+    def mass(self):
+        return self._isaac_physics_rigid_body_view.get_masses()
+    
+    # TODO BUG upstream: physics tensor api: changes not written to usd until .step
+    @mass.setter
+    def mass(self, value):
+        view = self._isaac_physics_rigid_body_view
+        value_ = torch.broadcast_to(torch.asarray(value), (view.count, 1))
+        view.set_masses(value_, indices=torch.arange(view.count))
+
+    @property
+    def mass_center_pose(self):
+        coms = self._isaac_physics_rigid_body_view.get_coms()
+
+        return Pose(
+            p=coms[..., [0, 1, 2]],
+            q=coms[..., [3, 4, 5, 6]],
+        )
+    
+    # TODO BUG upstream: physics tensor api: changes not written to usd until .step
+    @mass_center_pose.setter
+    def mass_center_pose(self, value: Pose):
+        view = self._isaac_physics_rigid_body_view
+        value_ = torch.broadcast_to(
+            torch.concat((torch.asarray(value.p), torch.asarray(value.q))),
+            size=(view.count, 7),
+        )
+        view.set_coms(value_, indices=torch.arange(view.count))
+
+
+# TODO
+class DeformableBody:
+    def __init__(self, entity: "Entity"):
+        self._entity = entity
+        raise NotImplementedError
+
+
 class Entity:
     # TODO support usd prims directly??
-    def __init__(self, path: PathExpressionLike, scene: Scene):
+    def __init__(self, path: PathExpressionLike, scene: Scene, _usd_prims_ref: ... = None):
+        if _usd_prims_ref is not None:
+            # TODO
+            raise NotImplementedError
+
         self._scene = scene
         self._path = PathExpression(path)
 
+        self._usd_prims_ref = _usd_prims_ref
+
+    def __repr__(self):
+        return f"{Entity.__qualname__}({str(self._path)!r}, scene={self._scene!r})"
+
+    # TODO FIXME performance thru prim obj caching
+    @property
+    # TODO invalidate !!!!!
+    # @functools.cached_property
+    def _usd_prims(self):
+        # TODO
+        if self._usd_prims_ref is not None:
+            return self._usd_prims_ref
+
+        return [
+            self._scene._usd_stage.GetPrimAtPath(p)
+            for p in self._scene.resolve(self._path)
+        ]
+        
     # TODO invalidate!!!!
     @functools.cached_property
-    def _isaac_usdgeom_xform_cache(self):
+    def _usd_xform_cache(self):
         # TODO Usd.TimeCode.Default()
         cache = self._scene._kernel.pxr.UsdGeom.XformCache()
 
@@ -39,34 +356,24 @@ class Entity:
     # TODO
     # TODO https://docs.omniverse.nvidia.com/dev-guide/latest/programmer_ref/usd/transforms/compute-prim-bounding-box.html
     @functools.cached_property
-    def _isaac_usdgeom_bbox_cache(self):
+    def _usd_bbox_cache(self):
         raise NotImplementedError
         return self._scene._kernel.pxr.UsdGeom.BBoxCache(
             self._scene._kernel.pxr.Usd.TimeCode.Default(),
             [self._scene._kernel.pxr.UsdGeom.Tokens.default_,],
         )
 
-    # TODO FIXME performance thru prim obj caching
-    @property
-    # TODO invalidate !!!!!
-    # @functools.cached_property
-    def _isaac_prims(self):
-        return [
-            self._scene._usd_stage.GetPrimAtPath(p)
-            for p in self._scene.resolve(self._path)
-        ]
-        
     @property
     def pose(self):
         # TODO 
         return Pose.from_matrix(
             numpy.stack([
                 numpy.asarray(
-                    self._isaac_usdgeom_xform_cache
+                    self._usd_xform_cache
                     .GetLocalToWorldTransform(prim)
                     .RemoveScaleShear()
                 ).T # TODO NOTE col-major
-                for prim in self._isaac_prims
+                for prim in self._usd_prims
             ])
         )
     
@@ -75,15 +382,15 @@ class Entity:
         pxr = self._scene._kernel.pxr
         omni = self._scene._kernel.omni
 
-        p = numpy.broadcast_to(value.p, (len(self._isaac_prims), 3))
-        q = numpy.broadcast_to(value.q, (len(self._isaac_prims), 4))
+        p = numpy.broadcast_to(value.p, (len(self._usd_prims), 3))
+        q = numpy.broadcast_to(value.q, (len(self._usd_prims), 4))
 
         p_vec3fs = pxr.Vt.Vec3fArrayFromBuffer(p)
         # NOTE this auto-converts from xyzw to wxyz
         q_quatfs = pxr.Vt.QuatfArrayFromBuffer(q)
 
         with pxr.Sdf.ChangeBlock():
-            for prim, p_vec3f, q_quatf in zip(self._isaac_prims, p_vec3fs, q_quatfs):
+            for prim, p_vec3f, q_quatf in zip(self._usd_prims, p_vec3fs, q_quatfs):
                 xformable = pxr.UsdGeom.Xformable(prim)
                 omni.physx.scripts.physicsUtils \
                     .set_or_add_translate_op(xformable, p_vec3f)
@@ -96,9 +403,6 @@ class Entity:
     def geometry(self):
         """
         TODO doc
-
-        The *physical* geometry of the entity.
-        If the entity has no collision then this would be empty.
         
         """
 
@@ -110,12 +414,12 @@ class Entity:
 
         geoms = []
 
-        for prim in self._isaac_prims:
+        for prim in self._usd_prims:
             prim_geoms = []
 
             prim_scale_factors = (
                 pxr.Gf.Transform(
-                    self._isaac_usdgeom_xform_cache
+                    self._usd_xform_cache
                     .GetLocalToWorldTransform(prim)
                 )
                 .GetScale()
@@ -128,7 +432,7 @@ class Entity:
                     pxr.Usd.PrimAllPrimsPredicate
                 ),
             ):
-                # TODO
+                # TODO restrict to collision only?
                 # if not child_prim.HasAPI(pxr.UsdPhysics.CollisionAPI):
                 #     continue
 
@@ -150,3 +454,49 @@ class Entity:
             geoms.append(prim_geoms)
 
         return geoms
+
+    @property
+    def collidable(self):
+        pxr = self._scene._kernel.pxr
+
+        value = []
+
+        for prim in self._usd_prims:
+            if not prim.HasAPI(pxr.UsdPhysics.CollisionAPI):
+                value.append(False)
+            else:
+                api = pxr.UsdPhysics.CollisionAPI(prim)
+                value.append(bool(
+                    api.CreateCollisionEnabledAttr().Get()
+                ))
+
+        return numpy.asarray(value)
+
+    @collidable.setter
+    def collidable(self, value):
+        pxr = self._scene._kernel.pxr
+
+        prims = self._usd_prims
+
+        for prim, v in zip(
+            prims,
+            numpy.broadcast_to(value, shape=len(prims)),
+        ):
+            if not prim.HasAPI(pxr.UsdPhysics.CollisionAPI):
+                api = pxr.UsdPhysics.CollisionAPI.Apply(prim)
+            else:
+                api = pxr.UsdPhysics.CollisionAPI(prim)
+            api.CreateCollisionEnabledAttr().Set(bool(v))
+
+    @functools.cached_property
+    def rigid_body(self):
+        return RigidBody(self)
+    
+    @functools.cached_property
+    def soft_body(self):
+        return DeformableBody(self)
+
+    @functools.cached_property
+    def on_contact(self):
+        return EntityContactAsyncEventStream(self)
+

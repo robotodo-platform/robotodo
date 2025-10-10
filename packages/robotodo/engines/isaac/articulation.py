@@ -38,8 +38,9 @@ class Articulation:
                 )
         except Exception as error:
             raise RuntimeError(
-                f"Failed to create physics view from root joint paths "
-                f"(are they valid?): {resolved_root_paths}"
+                f"Failed to create articulation physics view from "
+                f"resolved USD root joint paths (are they valid?): "
+                f"{resolved_root_paths}"
             ) from error
         return articulation_view, should_invalidate
 
@@ -135,7 +136,8 @@ class Articulation:
         value_ = torch.broadcast_to(torch.asarray(value), (view.count, view.max_dofs))
         view.set_dof_positions(value_, indices=torch.arange(view.count))
         # TODO FIXME: perf .change_block to defer result fetching?
-        self._scene._isaac_physx_simulation.fetch_results()
+        # TODO rm: this doesnt seem to do anything
+        # self._scene._isaac_physx_simulation.fetch_results()
 
     @property
     def dof_position_limits(self):
@@ -172,6 +174,7 @@ class Articulation:
         )
     
     # TODO this doesnt set the pose immediately!!!!
+    # TODO BUG upstream: physics tensor api: changes not written to usd until .step
     @root_pose.setter
     def root_pose(self, value: Pose):
         view = self._isaac_physics_articulation_view

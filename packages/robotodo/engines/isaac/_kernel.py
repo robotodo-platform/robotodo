@@ -133,6 +133,9 @@ class Kernel:
                 # extensions: so we can reference other kit files  
                 "--ext-folder", os.path.abspath(os.path.join(os.environ["ISAAC_PATH"], "apps")),      
                 # ...
+                # TODO optional ux improvement
+                "--/app/enableStdoutOutput=false",
+                # ...
                 # TODO this is needed so dlss lib is found? 
                 f"--/app/tokens/exe-path={os.path.abspath(exe_path)}",
                 # "--/app/fastShutdown=true",

@@ -3,7 +3,8 @@ import contextlib
 import warnings
 from typing import Optional, TypedDict, Unpack
 
-from robotodo.engines.core import PathExpressionLike
+from robotodo.engines.core.entity_selector import PathExpressionLike
+from robotodo.utils.geometry import Plane, PolygonMesh, Cube, Sphere
 
 from ._kernel import Kernel
 from .scene import Scene
@@ -11,12 +12,65 @@ from .articulation import Articulation
 from .entity import Entity
 
 
+class USDSceneLoader:
+    async def __call__(
+        self,
+        resource_or_model: ... = None,
+        # TODO mv engine??
+        _kernel: Kernel = None,
+    ) -> Scene:
+        if _kernel is None:
+            raise NotImplementedError("TODO")
+
+        # TODO
+        omni = _kernel.omni
+        _kernel.enable_extension("omni.usd")
+
+        ctx = omni.usd.get_context()
+        while True:
+            if ctx.can_open_stage():
+                break
+            await ctx.next_stage_event_async()
+
+        # TODO NOTE current impl opens model as sublayer: prob safest??
+        is_success, message = await ctx.new_stage_async()
+        if not is_success:
+            raise RuntimeError(f"Failed to create empty USD scene: {message}")
+        stage = ctx.get_stage()
+        if stage is None:
+            # TODO
+            raise RuntimeError("TODO")
+        stage.GetRootLayer().subLayerPaths.append(resource_or_model)
+
+        return Scene(_kernel=_kernel, _usd_stage_ref=stage)
+
+
+        # TODO
+        # is_success, message = await ctx.open_stage_async(resource_or_model)
+        # if not is_success:
+        #     raise RuntimeError(f"Failed to load USD scene {resource_or_model}: {message}")
+
+        # stage = ctx.get_stage()
+        # # TODO check None
+        # # TODO
+        # return Scene(_kernel=_kernel, _usd_stage=stage)
+    
+
+async def load_usd_scene(
+    resource_or_model: ...,
+    _kernel: Kernel,
+):
+    return await USDSceneLoader()(
+        resource_or_model=resource_or_model,
+        _kernel=_kernel,
+    )
+
+
 class USDLoader:
     class Config(TypedDict):
         path: Optional[PathExpressionLike]
 
     # TODO rm
-    # # TODO use scene._usd_current_stage
     # async def __call__(
     #     self,
     #     resource_or_model: ...,
@@ -123,7 +177,7 @@ class USDLoader:
             if not is_success:
                 raise RuntimeError(f"Invalid USD reference: {resource_or_model}")
 
-        # TODO FIXME upstream entity: no path roundtrip; ref underlying prim directly
+        # TODO FIXME entity: no path roundtrip; ref underlying prim directly
         return Entity(
             path=prim.GetPath().pathString,
             scene=scene,
@@ -137,13 +191,12 @@ async def load_usd(
     scene: Scene,
     config: USDLoader.Config = USDLoader.Config(),
     **config_kwds: Unpack[USDLoader.Config],
-):
+) -> Entity:
     return await USDLoader()(
         resource_or_model=resource_or_model, 
         scene=scene, 
         config=USDLoader.Config(config, **config_kwds),
     )
-
 
 
 class URDFLoader:
@@ -306,55 +359,72 @@ async def load_urdf(
     )
 
 
-class USDSceneLoader:
+BuildableGeometry = Plane | PolygonMesh | Cube | Sphere
+
+class Builder:
+    class Config(TypedDict):
+        path: Optional[PathExpressionLike]
+        num_copies: Optional[int]
+
     async def __call__(
         self,
-        resource_or_model: ... = None,
-        # TODO mv engine??
-        _kernel: Kernel = None,
-    ) -> Scene:
-        if _kernel is None:
+        geometry: BuildableGeometry,
+        scene: Scene,
+        config: Config = Config(),
+    ):
+        pxr = scene._kernel.pxr
+        omni = scene._kernel.omni
+
+        # TODO
+        scene._kernel.enable_extension("omni.usd")
+        
+        # TODO
+        if config.get("num_copies", None) is not None:
             raise NotImplementedError("TODO")
 
-        # TODO
-        omni = _kernel.omni
-        _kernel.enable_extension("omni.usd")
+        prim_path = config.get("path", None)
+        if prim_path is None:
+            prim_path = omni.usd.get_stage_next_free_path(
+                scene._usd_stage, 
+                path="/",
+                prepend_default_prim=False,
+            )
 
-        ctx = omni.usd.get_context()
-        while True:
-            if ctx.can_open_stage():
-                break
-            await ctx.next_stage_event_async()
+        if prim_path is not None:
+            if scene._usd_stage.GetPrimAtPath(prim_path).IsValid():
+                raise RuntimeError(f"Path already exists: {prim_path}")
 
-        # TODO NOTE current impl opens model as sublayer: prob safest??
-        is_success, message = await ctx.new_stage_async()
-        if not is_success:
-            raise RuntimeError(f"Failed to create empty USD scene: {message}")
-        stage = ctx.get_stage()
-        if stage is None:
-            # TODO
-            raise RuntimeError("TODO")
-        stage.GetRootLayer().subLayerPaths.append(resource_or_model)
+        match geometry:
+            case Plane():
+                prim = pxr.UsdGeom.Plane.Define(scene._usd_stage, prim_path)
+            case PolygonMesh():
+                # TODO
+                prim = pxr.UsdGeom.Mesh.Define(scene._usd_stage, prim_path)
+                prim.CreatePointsAttr().Set(geometry.vertices)
+                prim.CreateFaceVertexCountsAttr().Set(geometry.face_vertex_counts)
+                prim.CreateFaceVertexIndicesAttr().Set(geometry.face_vertex_indices)
+            case Cube():
+                # TODO
+                prim = pxr.UsdGeom.Cube.Define(scene._usd_stage, prim_path)
+            case Sphere():
+                prim = pxr.UsdGeom.Sphere.Define(scene._usd_stage, prim_path)
+                # TODO batch 
+                prim.CreateRadiusAttr().Set(geometry.radius)
+            case _:
+                raise NotImplementedError(f"Unsupported geometry: {geometry}")
+            
+        # TODO FIXME entity: no path roundtrip; ref underlying prim directly
+        return Entity(path=prim_path, scene=scene)
 
-        return Scene(_kernel=_kernel, _usd_stage_ref=stage)
 
-
-        # TODO
-        # is_success, message = await ctx.open_stage_async(resource_or_model)
-        # if not is_success:
-        #     raise RuntimeError(f"Failed to load USD scene {resource_or_model}: {message}")
-
-        # stage = ctx.get_stage()
-        # # TODO check None
-        # # TODO
-        # return Scene(_kernel=_kernel, _usd_stage=stage)
-    
-
-async def load_usd_scene(
-    resource_or_model: ...,
-    _kernel: Kernel,
+async def build(
+    geometry: BuildableGeometry,
+    scene: Scene,
+    config: Builder.Config = Builder.Config(),
+    **config_kwds: Unpack[Builder.Config]
 ):
-    return await USDSceneLoader()(
-        resource_or_model=resource_or_model,
-        _kernel=_kernel,
+    return await Builder()(
+        geometry=geometry,
+        scene=scene,
+        config=Builder.Config(config, **config_kwds),
     )

@@ -5,14 +5,14 @@ import asyncio
 
 from robotodo.engines.core.entity_selector import PathExpression, PathExpressionLike
 # TODO
-from robotodo.utils.event import BaseAsyncEventStream
+from robotodo.utils.event import BaseSubscriptionPartialAsyncEventStream
 
 # TODO
 from ._kernel import Kernel, get_default_kernel
 
 
 # TODO !!!! per stage???
-class _PhysicsStepAsyncEventStream(BaseAsyncEventStream[None]):
+class PhysicsStepAsyncEventStream(BaseSubscriptionPartialAsyncEventStream[None]):
     def __init__(self, scene: "Scene"):
         self._scene = scene
 
@@ -32,25 +32,6 @@ class _PhysicsStepAsyncEventStream(BaseAsyncEventStream[None]):
         yield
         sub.unsubscribe()
 
-    def __aiter__(self):
-        queue = asyncio.Queue()
-
-        loop = asyncio.get_running_loop()
-        def listener(event: None):
-            loop.call_soon_threadsafe(queue.put_nowait, event)
-
-        # TODO !!!!
-        async def agenerator():
-            with self.subscribe(listener):
-                while True:
-                    yield await queue.get()
-
-        return aiter(agenerator())
-
-    def __anext__(self):
-        return self.__aiter__().__anext__()
-
-
 
 # TODO multiple scenes are not supported!!!
 # TODO ? default scene: scene = Scene(); new scene: scene = engine.add(Scene())
@@ -58,14 +39,12 @@ class Scene:
 
     # TODO !!!!!
     def __init__(self, _kernel: Kernel | None = None, _usd_stage_ref: ... = None):
+        # TODO !!!!!
         if _kernel is None:
             raise NotImplementedError("TODO")
-        # TODO !!!!!
         self._kernel = _kernel
-        # TODO mv _usd_stage_ref
         self._usd_stage_ref = _usd_stage_ref
 
-    # TODO mv _usd_stage
     @property
     def _usd_stage(self):
         if self._usd_stage_ref is not None:
@@ -81,7 +60,6 @@ class Scene:
         assert stage is not None
         return stage
     
-    # TODO prefix with __isaac
     @functools.cached_property
     def _isaac_physics_tensor_view_cache(self):
         try:
@@ -199,7 +177,7 @@ class Scene:
     # TODO
     @functools.cached_property
     def on_step(self):
-        return _PhysicsStepAsyncEventStream(scene=self)
+        return PhysicsStepAsyncEventStream(scene=self)
     
     # TODO this should be render??
     @property

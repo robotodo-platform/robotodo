@@ -571,3 +571,5 @@ with batch_changes:
     ...
 
 ```
+
+- ux: Entity.summary()

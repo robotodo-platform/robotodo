@@ -5,7 +5,7 @@ TODO
 
 
 import functools
-from typing import Any
+from typing import Any, NamedTuple
 
 # TODO
 import warp
@@ -103,7 +103,6 @@ def _reshape_tiled_image(
     return out
 
 
-from typing import NamedTuple
 
 # TODO
 class Camera:
@@ -119,35 +118,16 @@ class Camera:
     def __init__(
         self, 
         path: PathExpressionLike,
-        _todo_resolution: Resolution | tuple[int, int],
         scene: Scene,
     ):
         """
-        TODO doc
-
-        :param _todo_resolution: (height, width)
-        
+        TODO doc        
         """
 
-        # TODO
         self._path = PathExpression(path)
-
-        # TODO !!!!!!
-        self._todo_resolution = self.Resolution._make(_todo_resolution)
-        # self._todo_resolution = _todo_resolution
-
-        # TODO
         self._scene = scene
 
-    # TODO
-    @property
-    def _todo_kernel(self):
-        return self._scene._kernel
-
-    # TODO
-    @property
-    def _todo_stage(self):
-        return self._scene._usd_stage
+        self._resolution = self.Resolution(height=256, width=256)
 
     # TODO mv to _Kernel and handle caching
     # TODO caching
@@ -155,7 +135,7 @@ class Camera:
     def _get_render_product(self, resolution: Resolution):
         # TODO customizable!!!!!!!
         return (
-            self._todo_kernel.omni.replicator.core.create
+            self._scene._kernel.omni.replicator.core.create
             .render_product_tiled(
                 # TODO FIXME this MUST be a list of concrete paths!!!!
                 self._scene.resolve(self._path), 
@@ -167,7 +147,7 @@ class Camera:
     @functools.cache
     def _get_render_targets(self, resolution: Resolution):
         return (
-            self._todo_stage.GetPrimAtPath(
+            self._scene._usd_stage.GetPrimAtPath(
                 self._get_render_product(resolution=resolution).path
             )
             .GetRelationship("camera")
@@ -190,10 +170,18 @@ class Camera:
         """      
 
         return (
-            self._todo_kernel.omni.replicator.core.AnnotatorRegistry
+            self._scene._kernel.omni.replicator.core.AnnotatorRegistry
             .get_annotator(name, device=device, do_array_copy=copy)
             .attach(self._get_render_product(resolution=resolution))
         )
+    
+    @property
+    def resolution(self):
+        return self._resolution
+    
+    @resolution.setter
+    def resolution(self, value: Resolution | tuple[int, int]):
+        self._resolution = self.Resolution._make(value)
 
     @property
     def image(self):
@@ -201,7 +189,7 @@ class Camera:
 
         rgba_tiled = self._get_render_annotator(
             "rgb", 
-            resolution=self._todo_resolution,
+            resolution=self._resolution,
         ).get_data()
         # TODO better way to handle this??
         if rgba_tiled.size == 0:
@@ -210,9 +198,9 @@ class Camera:
         res = _reshape_tiled_image(
             rgba_tiled, 
             shape=(
-                len(self._get_render_targets(resolution=self._todo_resolution)), 
-                self._todo_resolution.height, 
-                self._todo_resolution.width, 
+                len(self._get_render_targets(resolution=self._resolution)), 
+                self._resolution.height, 
+                self._resolution.width, 
                 rgba_tiled.shape[-1],
             ),
         )
