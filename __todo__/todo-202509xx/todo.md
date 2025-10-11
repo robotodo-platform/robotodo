@@ -564,12 +564,13 @@ timeline.rewind_one_frame()
 timeline.commit()
 ```
 
-- batch api:
+- 
 ```
-with batch_changes:
-    some_entity.pose = ...
-    ...
-
+isaac_physics_tensor_view = scene._isaac_physics_tensor_view
+# rigid_contact_view = isaac_physics_tensor_view.create_rigid_contact_view("/_02", ["/*"])
+# rigid_contact_view.sensor_names
+# rigid_contact_view.get_net_contact_forces(1)
+# # rigid_contact_view.get_contact_data(1)
 ```
 
-- ux: Entity.summary()
+

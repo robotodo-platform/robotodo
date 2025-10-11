@@ -39,7 +39,5 @@ class PathExpression:
         return matcher.match(path)
 
 
-
-
 # TODO
 PathExpressionLike = str | PathExpression

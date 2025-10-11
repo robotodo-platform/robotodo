@@ -5,14 +5,16 @@ TODO
 
 
 import functools
-from typing import Any, NamedTuple
+from typing import Any, Literal, NamedTuple
 
 # TODO
 import warp
 # import torch
+from robotodo.utils.pose import Pose
 from robotodo.engines.core.entity_selector import PathExpressionLike, PathExpression
 
 from .scene import Scene
+from ._utils import USDPrimHelper
 
 
 @warp.kernel
@@ -105,6 +107,7 @@ def _reshape_tiled_image(
 
 
 # TODO
+# TODO ref isaacsim.sensors.camera
 class Camera:
     """
     TODO doc
@@ -127,12 +130,27 @@ class Camera:
         self._path = PathExpression(path)
         self._scene = scene
 
-        self._resolution = self.Resolution(height=256, width=256)
+        # self._resolution = self.Resolution(height=256, width=256)
+
+    # TODO
+    @functools.cached_property
+    def __usd_prim_helper(self):
+        # TODO
+        return USDPrimHelper(path=self._path, scene=self._scene)
+    
+    @property
+    def pose(self):
+        return self.__usd_prim_helper.pose
+
+    @pose.setter
+    def pose(self, value: Pose):
+        self.__usd_prim_helper.pose = value
 
     # TODO mv to _Kernel and handle caching
     # TODO caching
     @functools.cache
-    def _get_render_product(self, resolution: Resolution):
+    def _isaac_get_render_product(self, resolution: Resolution):
+        self._scene._kernel.enable_extension("omni.replicator.core")
         # TODO customizable!!!!!!!
         return (
             self._scene._kernel.omni.replicator.core.create
@@ -144,20 +162,23 @@ class Camera:
         )
 
     # TODO caching
-    @functools.cache
-    def _get_render_targets(self, resolution: Resolution):
+    # @functools.cache
+    def _isaac_get_render_targets(self, resolution: Resolution):
         return (
             self._scene._usd_stage.GetPrimAtPath(
-                self._get_render_product(resolution=resolution).path
+                self._isaac_get_render_product(resolution=resolution).path
             )
             .GetRelationship("camera")
             .GetTargets()
         )
+    
+    _RESOLUTION_DEFAULT = Resolution(256, 256)
+    _IsaacRenderName = Literal["rgb", "distance_to_image_plane"] | str
 
     @functools.cache
-    def _get_render_annotator(
+    def _isaac_get_render_annotator(
         self, 
-        name: str, 
+        name: _IsaacRenderName, 
         resolution: Resolution,
         device: str = "cuda", 
         copy: bool = False,
@@ -167,44 +188,56 @@ class Camera:
 
         omni.replicator.core.AnnotatorRegistry.get_registered_annotators()
 
-        """      
+        """
+        
+        self._scene._kernel.enable_extension("omni.replicator.core")
 
         return (
             self._scene._kernel.omni.replicator.core.AnnotatorRegistry
             .get_annotator(name, device=device, do_array_copy=copy)
-            .attach(self._get_render_product(resolution=resolution))
+            .attach(self._isaac_get_render_product(resolution=resolution))
         )
     
-    @property
-    def resolution(self):
-        return self._resolution
-    
-    @resolution.setter
-    def resolution(self, value: Resolution | tuple[int, int]):
-        self._resolution = self.Resolution._make(value)
+    def _isaac_get_frame(
+        self, 
+        name: _IsaacRenderName,
+        resolution: Resolution,
+    ):
 
-    @property
-    def image(self):
-        # TODO !!!!!
-
-        rgba_tiled = self._get_render_annotator(
-            "rgb", 
-            resolution=self._resolution,
+        frame_tiled = self._isaac_get_render_annotator(
+            name, 
+            resolution=resolution,
         ).get_data()
         # TODO better way to handle this??
-        if rgba_tiled.size == 0:
+        if frame_tiled.size == 0:
+            # TODO
+            self._scene._kernel.hacky_ensure_render()
+            # NOTE maybe next time
             return None
+        
+        # TODO NOTE ensure dim
+        if frame_tiled.ndim == 2:
+            frame_tiled = frame_tiled.reshape((*frame_tiled.shape, 1))
 
         res = _reshape_tiled_image(
-            rgba_tiled, 
+            frame_tiled, 
             shape=(
-                len(self._get_render_targets(resolution=self._resolution)), 
-                self._resolution.height, 
-                self._resolution.width, 
-                rgba_tiled.shape[-1],
+                len(self._isaac_get_render_targets(resolution=resolution)), 
+                resolution.height, 
+                resolution.width, 
+                # TODO optional !!!!!!!!!!!!!!!!!!!!!!!!
+                frame_tiled.shape[-1],
             ),
         )
         # TODO perf: this has a constant us-level overhead!!!!
         return warp.to_torch(res)
     
-    # TODO pointcloud
+    # TODO
+    def read_rgba(self, resolution: Resolution | tuple[int, int] = _RESOLUTION_DEFAULT):
+        resolution = self.Resolution._make(resolution)
+        return self._isaac_get_frame(name="rgb", resolution=resolution)
+
+    # TODO FIXME upstream: tiled output channel optional 
+    def read_depth(self, resolution: Resolution | tuple[int, int] = _RESOLUTION_DEFAULT):
+        resolution = self.Resolution._make(resolution)
+        return self._isaac_get_frame(name="distance_to_image_plane", resolution=resolution)

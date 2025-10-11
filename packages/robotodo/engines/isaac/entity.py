@@ -12,6 +12,7 @@ from robotodo.utils.event import BaseSubscriptionPartialAsyncEventStream
 from robotodo.engines.core.entity_selector import PathExpression, PathExpressionLike
 
 from .scene import Scene
+from ._utils import USDPrimHelper
 
 
 # TODO TensorTable
@@ -78,6 +79,9 @@ class EntityContactAsyncEventStream(
     def subscribe(self, callable):
         scene = self._entity._scene
         pxr = scene._kernel.pxr
+        
+        # TODO
+        scene._kernel.enable_extension("omni.usd.schema.physx")
 
         for prim in self._entity._usd_prims:
             if prim.HasAPI(pxr.PhysxSchema.PhysxContactReportAPI):
@@ -314,88 +318,29 @@ class Entity:
         self._path = PathExpression(path)
 
         self._usd_prims_ref = _usd_prims_ref
-
+        
     def __repr__(self):
         return f"{Entity.__qualname__}({str(self._path)!r}, scene={self._scene!r})"
+
+    @functools.cached_property
+    def __usd_prim_helper(self):
+        # TODO
+        return USDPrimHelper(path=self._path, scene=self._scene, _usd_prims_ref=self._usd_prims_ref)
 
     # TODO FIXME performance thru prim obj caching
     @property
     # TODO invalidate !!!!!
     # @functools.cached_property
     def _usd_prims(self):
-        # TODO
-        if self._usd_prims_ref is not None:
-            return self._usd_prims_ref
-
-        return [
-            self._scene._usd_stage.GetPrimAtPath(p)
-            for p in self._scene.resolve(self._path)
-        ]
-        
-    # TODO invalidate!!!!
-    @functools.cached_property
-    def _usd_xform_cache(self):
-        # TODO Usd.TimeCode.Default()
-        cache = self._scene._kernel.pxr.UsdGeom.XformCache()
-
-        def _on_changed(notice, sender):
-            # TODO
-            cache.Clear()
-
-        # TODO NOTE life cycle
-        cache._notice_handler = _on_changed
-        # TODO
-        cache._notice_token = self._scene._kernel.pxr.Tf.Notice.Register(
-            self._scene._kernel.pxr.Usd.Notice.ObjectsChanged, 
-            cache._notice_handler, 
-            self._scene._usd_stage,
-        )
-
-        return cache
+        return self.__usd_prim_helper._usd_prims
     
-    # TODO
-    # TODO https://docs.omniverse.nvidia.com/dev-guide/latest/programmer_ref/usd/transforms/compute-prim-bounding-box.html
-    @functools.cached_property
-    def _usd_bbox_cache(self):
-        raise NotImplementedError
-        return self._scene._kernel.pxr.UsdGeom.BBoxCache(
-            self._scene._kernel.pxr.Usd.TimeCode.Default(),
-            [self._scene._kernel.pxr.UsdGeom.Tokens.default_,],
-        )
-
     @property
     def pose(self):
-        # TODO 
-        return Pose.from_matrix(
-            numpy.stack([
-                numpy.asarray(
-                    self._usd_xform_cache
-                    .GetLocalToWorldTransform(prim)
-                    .RemoveScaleShear()
-                ).T # TODO NOTE col-major
-                for prim in self._usd_prims
-            ])
-        )
+        return self.__usd_prim_helper.pose
     
     @pose.setter
     def pose(self, value: Pose):
-        pxr = self._scene._kernel.pxr
-        omni = self._scene._kernel.omni
-
-        p = numpy.broadcast_to(value.p, (len(self._usd_prims), 3))
-        q = numpy.broadcast_to(value.q, (len(self._usd_prims), 4))
-
-        p_vec3fs = pxr.Vt.Vec3fArrayFromBuffer(p)
-        # NOTE this auto-converts from xyzw to wxyz
-        q_quatfs = pxr.Vt.QuatfArrayFromBuffer(q)
-
-        with pxr.Sdf.ChangeBlock():
-            for prim, p_vec3f, q_quatf in zip(self._usd_prims, p_vec3fs, q_quatfs):
-                xformable = pxr.UsdGeom.Xformable(prim)
-                omni.physx.scripts.physicsUtils \
-                    .set_or_add_translate_op(xformable, p_vec3f)
-                omni.physx.scripts.physicsUtils \
-                    .set_or_add_orient_op(xformable, q_quatf)
+        self.__usd_prim_helper.pose = value
 
     # TODO scaling
     # TODO optimize: instanceable assets may have shared geoms
@@ -414,12 +359,12 @@ class Entity:
 
         geoms = []
 
-        for prim in self._usd_prims:
+        for prim in self.__usd_prim_helper._usd_prims:
             prim_geoms = []
 
             prim_scale_factors = (
                 pxr.Gf.Transform(
-                    self._usd_xform_cache
+                    self.__usd_prim_helper._usd_xform_cache
                     .GetLocalToWorldTransform(prim)
                 )
                 .GetScale()
@@ -437,6 +382,8 @@ class Entity:
                 #     continue
 
                 match child_prim:
+                    case _ if child_prim.IsA(pxr.UsdGeom.Plane):
+                        pass
                     case _ if child_prim.IsA(pxr.UsdGeom.Mesh):
                         api = pxr.UsdGeom.Mesh(child_prim)
                         # TODO lazy??
@@ -447,6 +394,10 @@ class Entity:
                                 face_vertex_indices=numpy.asarray(api.GetFaceVertexIndicesAttr().Get()),
                             )
                         )
+                    case _ if child_prim.IsA(pxr.UsdGeom.Cube):
+                        pass
+                    case _ if child_prim.IsA(pxr.UsdGeom.Sphere):
+                        pass
                     case _:
                         # TODO
                         pass

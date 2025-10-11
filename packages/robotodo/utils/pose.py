@@ -9,11 +9,37 @@ import scipy.spatial.transform
 import einops
 
 
+# TODO typing
+# TODO ref https://graphicscompendium.com/opengl/18-lookat-matrix
+def lookat(eye: ..., center: ..., up: ...):
+    """
+    TODO doc
+
+    # >>> lookat([1, 1, 1], [0, 0, 0], up=[0, 0, 1])
+    # >>> lookat([0, 1, 0], [0, 0, 0], up=[0, 0, 1])
+
+    """
+
+    # TODO float cast necesito?
+    eye = numpy.asarray(eye, dtype="float")
+    center = numpy.asarray(center, dtype="float")
+
+    forward = center - eye
+    forward /= numpy.linalg.norm(forward)
+
+    u = numpy.cross(forward, up)
+    v = numpy.cross(u, forward)
+    w = -forward
+
+    return numpy.stack((u, v, w), axis=-1)
+
+
 # TODO
 class ProtoPose:
     p: ...  # TODO xyz
     q: ...  # TODO xyzw
-    # angles: ... # TODO radian xyz
+    # radians: ... # TODO radian xyz
+
 
 # TODO FIXME perf
 # TODO support (*batch_dims, data)
@@ -22,13 +48,28 @@ class ProtoPose:
 class Pose:
     p: ...  # TODO xyz
     q: ...  # TODO xyzw
-    # angles: ... # TODO radian xyz
+    # randians: ... # TODO radian xyz
+    # degrees: ... # TODO radian xyz
 
+    @classmethod
+    def from_lookat(cls, p: ..., p_target: ..., up_axis: ... = [0, 0, 1]):
+        """
+        TODO doc
+        """
+
+        return cls(
+            p=p,
+            q=scipy.spatial.transform.Rotation.from_matrix(
+                lookat(p, p_target, up=up_axis)
+            ).as_quat(),
+        )
+
+    # TODO support for rotation matrix as well?
     @classmethod
     def from_matrix(cls, matrix):
         # TODO !!!!
         matrix = numpy.asarray(matrix)
-        return Pose(
+        return cls(
             p=matrix[..., :3, 3],
             q=scipy.spatial.transform.Rotation.from_matrix(matrix[..., :3, :3]).as_quat(),
         )
@@ -40,7 +81,8 @@ class Pose:
         *,
         p: ... = [0, 0, 0],
         q: ... = [0, 0, 0, 1],
-        # angles: ... = [0, 0, 0],
+        # radians: ... = [0, 0, 0],
+        # degrees: ... = [0, 0, 0],
     ):
         # TODO broadcast
         self.p = numpy.asarray(p, dtype=numpy.float_)
@@ -59,7 +101,7 @@ class Pose:
         )
 
     # TODO
-    def facing(self, pose: "Pose"):
+    def facing(self, p):
         # TODO
         raise NotImplementedError
 
@@ -100,7 +142,7 @@ class Pose:
     
     # TODO pack/unpack for all other methods!!!!!
     @property
-    def angles(self):
+    def radians(self):
         q_packed, ps = einops.pack([self.q], "* quat")
         [eulers] = einops.unpack(
             # TODO
@@ -110,7 +152,10 @@ class Pose:
         )
         return eulers
     
-
+    @property
+    def degrees(self):
+        return numpy.rad2deg(self.radians)
+    
     # TODO !!!
     def to_matrix(self):
         p = numpy.asarray(self.p)

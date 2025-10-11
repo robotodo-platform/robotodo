@@ -192,6 +192,7 @@ class Kernel:
     @functools.cached_property
     def pxr(self):
         # TODO !!!!
+        self.enable_extension("omni.usd.libs")
         return __import__("pxr")
     
     def start_app_loop_soon(self):
@@ -226,6 +227,18 @@ class Kernel:
         if ext_manager.is_extension_enabled(name) is enabled:
             return
         ext_manager.set_extension_enabled_immediate(name, enabled)
+
+    def import_module(self, module: str):
+        return __import__(module)
+    
+    # TODO NOTE mandatory warmup
+    def hacky_ensure_render(self):
+        timeline = self.omni.timeline.acquire_timeline_interface()
+        play_simulations_orig = self.get_settings().get("/app/player/playSimulations")
+        self.get_settings().set("/app/player/playSimulations", False)
+        timeline.forward_one_frame()
+        timeline.rewind_one_frame()
+        self.get_settings().set("/app/player/playSimulations", play_simulations_orig)
 
 
 import functools

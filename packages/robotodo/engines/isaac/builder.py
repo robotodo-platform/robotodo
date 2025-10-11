@@ -10,6 +10,28 @@ from ._kernel import Kernel
 from .scene import Scene
 from .articulation import Articulation
 from .entity import Entity
+from .sensors import Camera
+
+
+def _usd_get_or_use_free_path(scene: Scene, path: str | None = None):
+    omni = scene._kernel.omni
+
+    # TODO
+    scene._kernel.enable_extension("omni.usd")
+
+    if path is None:
+        path = omni.usd.get_stage_next_free_path(
+            scene._usd_stage, 
+            # TODO behavior should be similar to dir??
+            path="/",
+            prepend_default_prim=False,
+        )
+
+    if path is not None:
+        if scene._usd_stage.GetPrimAtPath(path).IsValid():
+            raise RuntimeError(f"Path already exists: {path}")
+        
+    return path
 
 
 class USDSceneLoader:
@@ -44,15 +66,12 @@ class USDSceneLoader:
 
         return Scene(_kernel=_kernel, _usd_stage_ref=stage)
 
-
-        # TODO
+        # TODO alt impl: add stage directly but stage maybe readonly!!!!
         # is_success, message = await ctx.open_stage_async(resource_or_model)
         # if not is_success:
         #     raise RuntimeError(f"Failed to load USD scene {resource_or_model}: {message}")
-
         # stage = ctx.get_stage()
         # # TODO check None
-        # # TODO
         # return Scene(_kernel=_kernel, _usd_stage=stage)
     
 
@@ -69,47 +88,8 @@ async def load_usd_scene(
 class USDLoader:
     class Config(TypedDict):
         path: Optional[PathExpressionLike]
-
-    # TODO rm
-    # async def __call__(
-    #     self,
-    #     resource_or_model: ...,
-    #     scene: Scene,
-    #     config: Config = Config(),
-    # ):
-        
-    #     match resource_or_model:
-    #         case str() as resource:
-    #             pass
-    #         # TODO support for Usd prims directly??
-    #         case _:
-    #             raise NotImplementedError(f"TODO {resource_or_model}")
-        
-    #     prim_path = config.get("path", None)
-    #     if prim_path is None:
-    #         prim_path = scene._kernel.omni.usd.get_stage_next_free_path(
-    #             scene._usd_current_stage, 
-    #             path="/",
-    #             prepend_default_prim=False,
-    #         )
-
-    #     if prim_path is not None:
-    #         if scene._usd_current_stage.GetPrimAtPath(prim_path).IsValid():
-    #             raise RuntimeError(f"Path already exists: {prim_path}")
-
-    #     # TODO add to scene._usd_current_stage!!!!
-    #     prim = scene._kernel.isaacsim.core.utils.stage \
-    #         .add_reference_to_stage(
-    #             usd_path=resource,
-    #             prim_path=prim_path,
-    #         )
-        
-    #     # TODO FIXME upstream entity: no path roundtrip; ref underlying prim directly
-    #     return Entity(
-    #         path=prim.GetPath().pathString,
-    #         scene=scene,
-    #     )
     
+    # TODO ref isaacsim.core.utils.stage.add_reference_to_stage
     async def __call__(
         self,
         resource_or_model: ...,
@@ -129,18 +109,11 @@ class USDLoader:
             # TODO support for Usd prims directly??
             case _:
                 raise NotImplementedError(f"TODO {resource_or_model}")
-        
-        prim_path = config.get("path", None)
-        if prim_path is None:
-            prim_path = omni.usd.get_stage_next_free_path(
-                scene._usd_stage, 
-                path="/",
-                prepend_default_prim=False,
-            )
-
-        if prim_path is not None:
-            if scene._usd_stage.GetPrimAtPath(prim_path).IsValid():
-                raise RuntimeError(f"Path already exists: {prim_path}")
+            
+        prim_path = _usd_get_or_use_free_path(
+            scene=scene, 
+            path=config.get("path", None),
+        )
 
         stage = scene._usd_stage
             
@@ -256,17 +229,10 @@ class URDFLoader:
         )
         assert is_success
 
-        prim_path = config.get("path", None)
-        if prim_path is None:
-            prim_path = omni.usd.get_stage_next_free_path(
-                scene._usd_stage, 
-                path="/",
-                prepend_default_prim=False,
-            )
-
-        if prim_path is not None:
-            if scene._usd_stage.GetPrimAtPath(prim_path).IsValid():
-                raise RuntimeError(f"Path already exists: {prim_path}")
+        prim_path = _usd_get_or_use_free_path(
+            scene=scene, 
+            path=config.get("path", None),
+        )
             
         stage_context = omni.usd.get_context_from_stage(scene._usd_stage)
         if stage_context is None:
@@ -361,7 +327,7 @@ async def load_urdf(
 
 BuildableGeometry = Plane | PolygonMesh | Cube | Sphere
 
-class Builder:
+class GeometricBuilder:
     class Config(TypedDict):
         path: Optional[PathExpressionLike]
         num_copies: Optional[int]
@@ -373,26 +339,15 @@ class Builder:
         config: Config = Config(),
     ):
         pxr = scene._kernel.pxr
-        omni = scene._kernel.omni
-
-        # TODO
-        scene._kernel.enable_extension("omni.usd")
         
         # TODO
         if config.get("num_copies", None) is not None:
             raise NotImplementedError("TODO")
 
-        prim_path = config.get("path", None)
-        if prim_path is None:
-            prim_path = omni.usd.get_stage_next_free_path(
-                scene._usd_stage, 
-                path="/",
-                prepend_default_prim=False,
-            )
-
-        if prim_path is not None:
-            if scene._usd_stage.GetPrimAtPath(prim_path).IsValid():
-                raise RuntimeError(f"Path already exists: {prim_path}")
+        prim_path = _usd_get_or_use_free_path(
+            scene=scene, 
+            path=config.get("path", None),
+        )
 
         match geometry:
             case Plane():
@@ -414,17 +369,58 @@ class Builder:
                 raise NotImplementedError(f"Unsupported geometry: {geometry}")
             
         # TODO FIXME entity: no path roundtrip; ref underlying prim directly
-        return Entity(path=prim_path, scene=scene)
+        return Entity(path=prim.GetPath().pathString, scene=scene)
+    
+    # TODO
+    async def destroy(self, entity: Entity):
+        raise NotImplementedError
 
 
-async def build(
+async def build_geometric(
     geometry: BuildableGeometry,
     scene: Scene,
-    config: Builder.Config = Builder.Config(),
-    **config_kwds: Unpack[Builder.Config]
+    config: GeometricBuilder.Config = GeometricBuilder.Config(),
+    **config_kwds: Unpack[GeometricBuilder.Config]
 ):
-    return await Builder()(
+    return await GeometricBuilder()(
         geometry=geometry,
         scene=scene,
-        config=Builder.Config(config, **config_kwds),
+        config=GeometricBuilder.Config(config, **config_kwds),
+    )
+
+
+class CameraBuilder:
+    class Config(TypedDict):
+        path: Optional[PathExpressionLike]
+        num_copies: Optional[int]
+
+    async def __call__(
+        self,
+        scene: Scene,
+        config: Config = Config(),
+    ):
+        pxr = scene._kernel.pxr
+
+        prim_path = _usd_get_or_use_free_path(
+            scene=scene, 
+            path=config.get("path", None),
+        )
+        prim = pxr.UsdGeom.Camera.Define(scene._usd_stage, prim_path)
+
+        # TODO FIXME entity: no path roundtrip; ref underlying prim directly
+        return Camera(prim.GetPath().pathString, scene=scene)
+
+    # TODO
+    async def destroy(self, camera: Camera):
+        raise NotImplementedError
+
+# TODO ref omni.replicator.core.create.camera
+async def build_camera(
+    scene: Scene,
+    config: CameraBuilder.Config = CameraBuilder.Config(),
+    **config_kwds: Unpack[CameraBuilder.Config],
+):
+    return await CameraBuilder()(
+        scene=scene,
+        config=CameraBuilder.Config(config, **config_kwds),
     )

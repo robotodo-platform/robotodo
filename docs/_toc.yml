@@ -1,0 +1,12 @@
+format: jb-book
+root: content/front-page
+parts:
+- caption: User Guide
+  chapters:
+  - glob: content/user-guide/*
+- caption: References
+  chapters:
+  - glob: content/references/*
+- caption: Specifications
+  chapters:
+  - glob: content/specs/*

@@ -12,23 +12,24 @@ from ._kernel import Kernel, get_default_kernel
 
 
 # TODO !!!! per stage???
-class PhysicsStepAsyncEventStream(BaseSubscriptionPartialAsyncEventStream[None]):
+class PhysicsStepAsyncEventStream(BaseSubscriptionPartialAsyncEventStream[float]):
     def __init__(self, scene: "Scene"):
         self._scene = scene
 
     @functools.cached_property
-    def __isaac_physx_interface(self):
+    def _isaac_physx_interface(self):
+        self._scene._kernel.enable_extension("omni.physx")
         return self._scene._kernel.omni.physx.get_physx_interface()
 
     # TODO
     @contextlib.contextmanager
     def subscribe(self, callable):
         # TODO cache?
-        def physx_callback(dt: float):
-            result = callable(None)
+        def physx_callback(timestep: float):
+            result = callable(timestep)
             if asyncio.iscoroutine(result):
                 asyncio.create_task(result)
-        sub = self.__isaac_physx_interface.subscribe_physics_step_events(physx_callback)
+        sub = self._isaac_physx_interface.subscribe_physics_step_events(physx_callback)
         yield
         sub.unsubscribe()
 
@@ -50,6 +51,8 @@ class Scene:
         if self._usd_stage_ref is not None:
             return self._usd_stage_ref
 
+        self._kernel.enable_extension("omni.usd")
+
         # TODO !!!
         stage = self._kernel.omni.usd.get_context().get_stage()
         if stage is None:
@@ -63,6 +66,7 @@ class Scene:
     @functools.cached_property
     def _isaac_physics_tensor_view_cache(self):
         try:
+            self._kernel.enable_extension("omni.physics.tensors")
             # TODO FIXME stage_id !!!!!!
             res = self._kernel.omni.physics.tensors.create_simulation_view("torch")
         except Exception as error:
@@ -87,6 +91,8 @@ class Scene:
     # TODO cache and ensure current stage !!!!
     @property
     def _isaac_physx_simulation(self):
+        self._kernel.enable_extension("omni.physx")
+
         physx_sim = self._kernel.omni.physx.get_physx_simulation_interface()
         # TODO FIXME: this causes timeline to stop working
         # current_stage_id = self._kernel.pxr.UsdUtils.StageCache.Get().GetId(self._usd_current_stage).ToLongInt()
@@ -128,16 +134,16 @@ class Scene:
     def resolve(self, path: PathExpressionLike):
         return PathExpression(path).resolve(self.traverse())
 
-    # TODO
+    # TODO !!!!
     def copy(self, path: PathExpressionLike, target_path: PathExpressionLike):
         path = PathExpression(path)
         target_path = PathExpression(target_path)
 
         # TODO mv
-        import isaacsim.core.cloner
+        self._kernel.enable_extension("isaacsim.core.cloner")
 
         # TODO check if dir
-        cloner = isaacsim.core.cloner.Cloner(stage=self._usd_stage)
+        cloner = self._kernel.isaacsim.core.cloner.Cloner(stage=self._usd_stage)
         source_prim_path = self.resolve(path)
         if len(source_prim_path) != 1:
             raise NotImplementedError("TODO")
@@ -159,7 +165,7 @@ class Scene:
     # TODO
     # TODO ref https://docs.omniverse.nvidia.com/kit/docs/omni_physics/108.0/dev_guide/simulation_control/simulation_control.html
 
-    # TODO FIXME: this messes up the timeline for some reason !!!!!!!!
+    # TODO cannot reproduce: ~~this messes up the timeline for some reason !!!!!!!!~~
     # TODO api: support time??
     async def step(self, timestep: float = 1 / 60):
         if float(timestep) == 0:
@@ -187,5 +193,5 @@ class Scene:
     # TODO convenience
     @functools.cached_property
     def viewer(self):
-        from .viewer import Viewer
-        return Viewer(scene=self)
+        from .viewer import SceneViewer
+        return SceneViewer(scene=self)
