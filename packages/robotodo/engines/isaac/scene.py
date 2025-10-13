@@ -186,9 +186,9 @@ class Scene:
         return PhysicsStepAsyncEventStream(scene=self)
     
     # TODO this should be render??
-    @property
-    def on_render(self):
-        raise NotImplementedError
+    # @property
+    # def on_render(self):
+    #     raise NotImplementedError
     
     # TODO convenience
     @functools.cached_property

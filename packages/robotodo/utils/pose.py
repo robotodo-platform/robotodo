@@ -23,6 +23,7 @@ def lookat(eye: ..., center: ..., up: ...):
     # TODO float cast necesito?
     eye = numpy.asarray(eye, dtype="float")
     center = numpy.asarray(center, dtype="float")
+    up = numpy.asarray(up, dtype="float")
 
     forward = center - eye
     forward /= numpy.linalg.norm(forward)

@@ -172,6 +172,10 @@ class Kernel:
 
             # TODO load extensions
 
+            # TODO
+            while not self._app_framework.app.is_app_ready():
+                self._app_framework.app.update()
+
         # TODO !!!!!
         self._should_run_app_loop = None
 
@@ -208,6 +212,13 @@ class Kernel:
     def stop_app_loop_soon(self):
         self._should_run_app_loop = False
 
+    def step_app_loop_soon(self):
+        def f():
+            if not self._should_run_app_loop:
+                return
+            self._app_framework.update()
+        self._loop.call_soon(f)
+        
     def step_app_loop(self):
         self._app_framework.update()
 
@@ -230,15 +241,6 @@ class Kernel:
 
     def import_module(self, module: str):
         return __import__(module)
-    
-    # TODO NOTE mandatory warmup
-    def hacky_ensure_render(self):
-        timeline = self.omni.timeline.acquire_timeline_interface()
-        play_simulations_orig = self.get_settings().get("/app/player/playSimulations")
-        self.get_settings().set("/app/player/playSimulations", False)
-        timeline.forward_one_frame()
-        timeline.rewind_one_frame()
-        self.get_settings().set("/app/player/playSimulations", play_simulations_orig)
 
 
 import functools

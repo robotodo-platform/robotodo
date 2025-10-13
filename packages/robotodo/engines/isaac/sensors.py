@@ -190,28 +190,43 @@ class Camera:
 
         """
         
+        omni = self._scene._kernel.omni
         self._scene._kernel.enable_extension("omni.replicator.core")
 
-        return (
-            self._scene._kernel.omni.replicator.core.AnnotatorRegistry
+        annotator = (
+            omni.replicator.core.AnnotatorRegistry
             .get_annotator(name, device=device, do_array_copy=copy)
             .attach(self._isaac_get_render_product(resolution=resolution))
         )
+
+        async def result_fn():
+            # NOTE ensure the data is available IMMEDIATELY after this function call
+            # TODO ref omni.replicator.core.scripts.annotators.Annotator.get_data
+            await omni.replicator.core.orchestrator.step_async(
+                rt_subframes=1, 
+                delta_time=0, 
+                wait_for_render=True,
+            )
+            return annotator
+
+        # TODO
+        return self._scene._kernel._loop.create_task(result_fn())
     
-    def _isaac_get_frame(
+    async def _isaac_get_frame(
         self, 
         name: _IsaacRenderName,
         resolution: Resolution,
     ):
 
-        frame_tiled = self._isaac_get_render_annotator(
-            name, 
-            resolution=resolution,
-        ).get_data()
+        frame_tiled = (
+            (await self._isaac_get_render_annotator(
+                name, 
+                resolution=resolution,
+            ))
+            .get_data()
+        )
         # TODO better way to handle this??
         if frame_tiled.size == 0:
-            # TODO
-            self._scene._kernel.hacky_ensure_render()
             # NOTE maybe next time
             return None
         
@@ -233,11 +248,11 @@ class Camera:
         return warp.to_torch(res)
     
     # TODO
-    def read_rgba(self, resolution: Resolution | tuple[int, int] = _RESOLUTION_DEFAULT):
+    async def read_rgba(self, resolution: Resolution | tuple[int, int] = _RESOLUTION_DEFAULT):
         resolution = self.Resolution._make(resolution)
-        return self._isaac_get_frame(name="rgb", resolution=resolution)
+        return await self._isaac_get_frame(name="rgb", resolution=resolution)
 
     # TODO FIXME upstream: tiled output channel optional 
-    def read_depth(self, resolution: Resolution | tuple[int, int] = _RESOLUTION_DEFAULT):
+    async def read_depth(self, resolution: Resolution | tuple[int, int] = _RESOLUTION_DEFAULT):
         resolution = self.Resolution._make(resolution)
-        return self._isaac_get_frame(name="distance_to_image_plane", resolution=resolution)
+        return await self._isaac_get_frame(name="distance_to_image_plane", resolution=resolution)

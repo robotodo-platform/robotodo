@@ -44,25 +44,38 @@ class USDSceneLoader:
         if _kernel is None:
             raise NotImplementedError("TODO")
 
-        # TODO
-        omni = _kernel.omni
-        _kernel.enable_extension("omni.usd")
+        # TODO rm???
+        # omni = _kernel.omni
+        # _kernel.enable_extension("omni.usd")
 
-        ctx = omni.usd.get_context()
-        while True:
-            if ctx.can_open_stage():
-                break
-            await ctx.next_stage_event_async()
+        # ctx = omni.usd.get_context()
+        # while True:
+        #     if ctx.can_open_stage():
+        #         break
+        #     # TODO
+        #     # _kernel.step_app_loop_soon()
+        #     # TODO cancel pending stage opening??
+        #     await ctx.next_stage_event_async()
 
-        # TODO NOTE current impl opens model as sublayer: prob safest??
-        is_success, message = await ctx.new_stage_async()
-        if not is_success:
-            raise RuntimeError(f"Failed to create empty USD scene: {message}")
-        stage = ctx.get_stage()
-        if stage is None:
-            # TODO
-            raise RuntimeError("TODO")
+        # # TODO NOTE current impl opens model as sublayer: prob safest??
+        # is_success, message = await ctx.new_stage_async()
+        # if not is_success:
+        #     raise RuntimeError(f"Failed to create empty USD scene: {message}")
+        # stage = ctx.get_stage()
+        # if stage is None:
+        #     # TODO
+        #     raise RuntimeError("TODO")
+
+        pxr = _kernel.pxr
+        stage = pxr.Usd.Stage.CreateInMemory()
+        # TODO customizable!!!  also necesito???
+        pxr.UsdGeom.SetStageUpAxis(stage, pxr.UsdGeom.Tokens.z)
+
         stage.GetRootLayer().subLayerPaths.append(resource_or_model)
+
+        # TODO this attaches the stage to the viewer and inits rendering+physics?
+        # TODO FIXME rm in the future when: 1) urdf stage= bug has been fixed 2) users are informed of the behavior
+        await _kernel.omni.usd.get_context().attach_stage_async(stage)
 
         return Scene(_kernel=_kernel, _usd_stage_ref=stage)
 
@@ -100,7 +113,7 @@ class USDLoader:
         omni = scene._kernel.omni        
 
         # TODO
-        scene._kernel.enable_extension("omni.usd")
+        # scene._kernel.enable_extension("omni.usd")
         scene._kernel.enable_extension("omni.usd.metrics.assembler")
 
         match resource_or_model:
@@ -233,27 +246,26 @@ class URDFLoader:
             scene=scene, 
             path=config.get("path", None),
         )
-            
+
+        stage = scene._usd_stage
+
         stage_context = omni.usd.get_context_from_stage(scene._usd_stage)
         if stage_context is None:
-            raise RuntimeError(
-                f"The USD stage is invalid. "
+            warnings.warn(
+                f"Failed to acquire context from the USD stage. "
                 f"Stage: {scene._usd_stage}"
             )
-        if not stage_context.is_writable():
-            raise RuntimeError(
-                f"The USD stage does not appear to be writable. Crash may result! "
-                f"Stage: {scene._usd_stage}"
-            )
+        else:
+            if not stage_context.is_writable():
+                warnings.warn(
+                    f"The USD stage does not appear to be writable. Crash may result! "
+                    f"Stage: {scene._usd_stage}"
+                )
         
         @contextlib.contextmanager
         def _undo_unnecessary_stage_changes():
-            stage = stage_context.get_stage()
-            
             default_prim_orig = stage.GetDefaultPrim()
-
             yield
-
             stage.SetDefaultPrim(default_prim_orig)
         
         urdf_interface = isaacsim.asset.importer.urdf._urdf.acquire_urdf_interface()
@@ -270,7 +282,8 @@ class URDFLoader:
                 assetName="",
                 robot=robot_model,
                 importConfig=import_config,
-                stage=stage_context.get_stage().GetEditTarget().GetLayer().identifier,
+                # TODO this doesnt do anything AT ALL!!!! still the opened stage!!!
+                stage=stage.GetEditTarget().GetLayer().identifier,
             )
 
         # TODO rm?
@@ -284,6 +297,7 @@ class URDFLoader:
         # )
         # assert is_success
 
+        # TODO stage
         if prim_path is None:
             prim_path = prim_path_temp
         else:
@@ -306,6 +320,7 @@ class URDFLoader:
         )
         """
         return Articulation(
+            # TODO stage
             scene._kernel.isaacsim.core.utils.prims
                 .get_articulation_root_api_prim_path(prim_path), 
             scene=scene,
