@@ -351,29 +351,6 @@ class SphericalJoint(Joint, ProtoSphericalJoint):
 # TODO NOTE must be homogenous
 # TODO FIXME write operations may not sync to the USD stage unless .step called
 class Articulation(ProtoArticulation):
-
-    class _USDArticulationRootPrimRef:
-        def __init__(self, ref: USDPrimRef, kernel: Kernel):
-            self._ref = ref
-            self._kernel = kernel
-
-        def __call__(self):
-            pxr = self._kernel.pxr
-
-            return [
-                maybe_root_prim
-                for prim in self._ref()
-                # NOTE this already includes the prim itself
-                for maybe_root_prim in pxr.Usd.PrimRange(
-                    prim, 
-                    # TODO rm???
-                    # pxr.Usd.TraverseInstanceProxies(
-                    #     pxr.Usd.PrimAllPrimsPredicate
-                    # ),
-                )
-                if maybe_root_prim.HasAPI(pxr.UsdPhysics.ArticulationRootAPI)
-            ]
-
     # TODO
     _usd_prim_ref: USDPrimRef
     _scene: Scene
@@ -417,7 +394,6 @@ class Articulation(ProtoArticulation):
         self,
         ref: "Articulation | Entity | PathExpressionLike | USDPrimRef",
         scene: Scene | None = None,
-        exact: bool = False,
     ):
         match ref:
             case Articulation() as articulation:
@@ -443,12 +419,24 @@ class Articulation(ProtoArticulation):
                 self._scene = scene
             case _:
                 raise InvalidReferenceError(ref)
-            
-        if not exact:
-            self._usd_prim_ref = Articulation._USDArticulationRootPrimRef(
-                ref=self._usd_prim_ref,
-                kernel=self._scene._kernel,
+
+    @property
+    def _usd_articulation_root_prims(self):
+        pxr = self._scene._kernel.pxr
+
+        return [
+            maybe_root_prim
+            for prim in self._usd_prim_ref()
+            # NOTE this already includes the prim itself
+            for maybe_root_prim in pxr.Usd.PrimRange(
+                prim, 
+                # TODO rm???
+                # pxr.Usd.TraverseInstanceProxies(
+                #     pxr.Usd.PrimAllPrimsPredicate
+                # ),
             )
+            if maybe_root_prim.HasAPI(pxr.UsdPhysics.ArticulationRootAPI)
+        ]
             
     @functools.cached_property
     def _isaac_physics_articulation_view_cache(self):
@@ -457,7 +445,7 @@ class Articulation(ProtoArticulation):
         try:
             resolved_root_paths = [
                 prim.GetPath().pathString
-                for prim in self._usd_prim_ref()
+                for prim in self._usd_articulation_root_prims
             ]
             self._scene._isaac_physx_simulation.flush_changes()
             isaac_physics_tensor_view = self._scene._isaac_physics_tensor_view
@@ -492,7 +480,7 @@ class Articulation(ProtoArticulation):
     @property
     def _isaac_physx_articulation_properties(self):
         return usd_physx_query_articulation_properties(
-            self._usd_prim_ref(),
+            self._usd_articulation_root_prims,
             kernel=self._scene._kernel,
         )
             

@@ -195,12 +195,26 @@ class Body(ProtoBody):
             spec_overrides=spec_overrides,
         )
 
+    # TODO next
+    @classmethod
+    def find(
+        cls,
+        ref: "Body | Entity | USDPrimRef | PathExpressionLike",
+        scene: Scene | None = None,
+    ):
+        # TODO this feels hacky
+        instance = cls(ref=ref, scene=scene)
+        instance._usd_prim_ref = Body._USDBodyPrimRef(
+            instance._usd_prim_ref, 
+            kernel=instance._scene._kernel,
+        )
+        return instance
+
     # TODO
     def __init__(
         self,
         ref: "Body | Entity | USDPrimRef | PathExpressionLike",
         scene: Scene | None = None,
-        exact: bool = False,
     ):
         match ref:
             case Body() as body:
@@ -226,12 +240,6 @@ class Body(ProtoBody):
                 self._scene = scene
             case _:
                 raise InvalidReferenceError(ref)
-            
-        if not exact:
-            self._usd_prim_ref = Body._USDBodyPrimRef(
-                self._usd_prim_ref, 
-                kernel=self._scene._kernel,
-            )
 
     # TODO
     @functools.cached_property
