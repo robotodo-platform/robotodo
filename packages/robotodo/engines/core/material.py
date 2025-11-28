@@ -2,10 +2,10 @@ import abc
 import enum
 
 from tensorspecs import TensorLike
-from robotodo.utils.pose import Pose
+from robotodo.engines.core.entity import ProtoEntity
 
 
-class ProtoMaterial(abc.ABC):
+class ProtoMaterial(ProtoEntity, abc.ABC):
     # TODO
     static_friction: TensorLike["* value"]
     dynamic_friction: TensorLike["* value"]

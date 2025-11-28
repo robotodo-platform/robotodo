@@ -2,9 +2,13 @@
 import abc
 import enum
 import asyncio
+from typing import TypedDict, Unpack
+from types import EllipsisType
 
 from tensorspecs import TensorLike
+from robotodo.engines.core.path import PathExpressionLike
 from robotodo.engines.core.entity import ProtoEntity
+from robotodo.engines.core.body import ProtoBody
 from robotodo.engines.core.scene import ProtoScene
 from robotodo.utils.pose import Pose
 
@@ -25,53 +29,69 @@ class JointKind(enum.IntEnum):
 
 
 # TODO
-class ProtoJoint(abc.ABC):
-    # TODO mv ProtoEntity #####
-    @classmethod
-    def __class_getitem__(cls, label: TensorLike["*", str] | None):
-        return cls
-
-    # TODO mv ProtoEntity or necesito??
-    @property
-    def label(self) -> TensorLike["*", str] | None:
-        return None
-    # TODO mv ProtoEntity #####
+class ProtoJoint(ProtoEntity, abc.ABC):
+    # @classmethod
+    # @abc.abstractmethod
+    # def create(cls):
+    #     ...
 
     # TODO
     @abc.abstractmethod
-    def __init__(self, ref: ..., scene: ... = None):
+    def __init__(
+        self, 
+        ref: "ProtoJoint | ProtoEntity | PathExpressionLike", 
+        scene: ProtoScene | None = None,
+    ):
         ...
 
-    # TODO mv ProtoEntity
-    def __repr__(self):
-        return (
-            f"""{self.__class__.__qualname__}"""
-            f"""{f"[{self.label!r}]" if self.label is not None else ""}"""
-            # TODO
-            f"""({...}, scene={...})"""
-        )    
+    @property
+    @abc.abstractmethod
+    def kind(self) -> TensorLike["*", JointKind]:
+        ...
 
-    # TODO
-    kind: TensorLike["*", JointKind]    
+    @property
+    @abc.abstractmethod
+    def body0(self) -> ProtoBody:
+        ...
     
-    body0: ProtoEntity
-    pose_in_body0: Pose
+    @property
+    @abc.abstractmethod
+    def pose_in_body0(self) -> Pose:
+        ...
 
-    body1: ProtoEntity
-    pose_in_body1: Pose
+    @property
+    @abc.abstractmethod
+    def body1(self) -> ProtoBody:
+        ...
+    
+    @property
+    @abc.abstractmethod
+    def pose_in_body1(self) -> Pose:
+        ...
 
 
 class ProtoFixedJoint(ProtoJoint, abc.ABC):
-    kind: TensorLike["*", JointKind.FIXED]
+    @property
+    @abc.abstractmethod
+    def kind(self) -> TensorLike["*", JointKind.FIXED]:
+        ...
 
 
 class ProtoRevoluteJoint(ProtoJoint, abc.ABC):
-    kind: TensorLike["*", JointKind.REVOLUTE]
-    axis: TensorLike["*", Axis]
+    @property
+    @abc.abstractmethod
+    def kind(self) -> TensorLike["*", JointKind.REVOLUTE]:
+        ...
 
     @property
+    @abc.abstractmethod
+    def axis(self) -> TensorLike["*", Axis]:
+        ...
+
+    @property
+    @abc.abstractmethod
     def position_limit(self) -> TensorLike["* minmax:2"]:
-        """
+        r"""
         Joint angular position limit (min-max).
         Unit: radians.
         """
@@ -79,12 +99,20 @@ class ProtoRevoluteJoint(ProtoJoint, abc.ABC):
 
 
 class ProtoPrismaticJoint(ProtoJoint, abc.ABC):
-    kind: TensorLike["*", JointKind.PRISMATIC]
-    axis: TensorLike["*", Axis]
+    @property
+    @abc.abstractmethod
+    def kind(self) -> TensorLike["*", JointKind.PRISMATIC]:
+        ...
 
     @property
+    @abc.abstractmethod
+    def axis(self) -> TensorLike["*", Axis]:
+        ...
+
+    @property
+    @abc.abstractmethod
     def position_limit(self) -> TensorLike["* minmax:2"]:
-        """
+        r"""
         Joint linear position limit (min-max).
         Unit: TODO.
         """
@@ -92,7 +120,11 @@ class ProtoPrismaticJoint(ProtoJoint, abc.ABC):
 
 
 class ProtoSphericalJoint(ProtoJoint, abc.ABC):
-    kind: TensorLike["*", JointKind.SPHERICAL]
+    @property
+    @abc.abstractmethod
+    def kind(self) -> TensorLike["*", JointKind.SPHERICAL]:
+        ...
+
     # TODO ...
 
 
@@ -102,31 +134,29 @@ class DOFKind(enum.IntEnum):
     TRANSLATION = 1
 
 
-class ProtoArticulation(abc.ABC):
+class ProtoArticulation(ProtoEntity, abc.ABC):
     """
     TODO doc
     """
 
-    # TODO rm
-    # body_names: TensorLike["*? body", str]
-    # joint_names: TensorLike["*? joint", str]
-    # joint_dof_counts: TensorLike["*? joint", int]
-    # joint_body0_index: TensorLike["*? joint", str]
-    # joint_poses_in_body0: Pose["*? joint", float]
+    # TODO ArticulationSpec
+    # @classmethod
+    # @abc.abstractmethod
+    # def create(cls, ref: PathExpressionLike, scene: ProtoScene):
+    #     ...
 
     # TODO
-    @classmethod
-    @abc.abstractmethod
-    def create(self, scene: ProtoScene):
-        ...
-
-    @abc.abstractmethod
-    def from_entity(self, entity: ProtoEntity):
-        ...
+    # @abc.abstractmethod
+    # def from_entity(self, entity: ProtoBody):
+    #     ...
 
     # TODO
     @abc.abstractmethod
-    def __init__(self, path: TensorLike["*?", str], scene: ProtoScene):
+    def __init__(
+        self, 
+        ref: "ProtoArticulation | ProtoEntity | PathExpressionLike", 
+        scene: ProtoScene | None = None,
+    ):
         ...
 
     @property
@@ -134,10 +164,25 @@ class ProtoArticulation(abc.ABC):
     def joints(self) -> dict[str, ProtoJoint]:
         ...
 
+    # TODO infer from joints??
     @property
     @abc.abstractmethod
-    def links(self) -> dict[str, ProtoEntity]:
+    def links(self) -> dict[str, ProtoBody]:
         ...
+
+    # TODO
+    @property
+    # @abc.abstractmethod
+    def pose(self) -> Pose:
+        ...
+        raise NotImplementedError
+
+    # TODO
+    @property
+    # @abc.abstractmethod
+    def pose_in_parent(self) -> Pose:
+        ...
+        raise NotImplementedError
 
     @property
     @abc.abstractmethod
@@ -163,6 +208,7 @@ class ProtoArticulation(abc.ABC):
     def dof_position_limits(self) -> TensorLike["* dof minmax:2", float]:
         ...
 
+    # TODO make optional?
     @property
     @abc.abstractmethod
     def driver(self) -> "ProtoArticulationDriver":
@@ -171,11 +217,23 @@ class ProtoArticulation(abc.ABC):
         """
         ...
 
+    # TODO
+    @abc.abstractmethod
+    def planner(
+        self, 
+        **config_kwds: Unpack["ProtoArticulationPlanner.Config"],
+    ) -> "ProtoArticulationPlanner":
+        ...
+
 
 class DriveMode(enum.IntEnum):
     NONE = 0
     FORCE = 1
     ACCELERATION = 2
+
+
+# TODO necesito?
+ArticulationAction = ...
 
 
 class ProtoArticulationDriver(abc.ABC):
@@ -225,16 +283,21 @@ class ProtoArticulationDriver(abc.ABC):
 
     # TODO timestep
     @abc.abstractmethod
-    def execute_action(
+    async def execute_action(
         self, 
         action: ..., 
-        # tolerance: ...,
-        # timesteps: TensorLike["*", float] | None = None,
-    ) -> asyncio.Task:
+        # TODO
+        position_error_limit: float = 1e-1,
+        velocity_error_limit: float = 1e-1,
+    ):
         ...
 
 
 class ProtoArticulationPlanner(abc.ABC):
+    class Config(TypedDict):
+        base_link: str
+        end_link: str
+
     # TODO
     @abc.abstractmethod
     def compute_action(self, observation: ...):

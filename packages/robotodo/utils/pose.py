@@ -7,7 +7,7 @@ TODO
 import numpy
 import scipy.spatial.transform
 import einops
-
+from tensorspecs import TensorLike
 
 # TODO typing
 # TODO ref https://graphicscompendium.com/opengl/18-lookat-matrix
@@ -36,10 +36,41 @@ import einops
 #     return numpy.stack((u, v, w), axis=-1)
 
 # TODO https://www.scratchapixel.com/lessons/mathematics-physics-for-computer-graphics/lookat-function/framing-lookat-function.html
-def lookat(eye: ..., center: ..., up_axis: ...):
+# def lookat(eye: ..., center: ..., up_axis: ...):
+#     """
+#     TODO doc: right-handed coords: +X right, +Y up, +Z forward
+
+#     https://docs.omniverse.nvidia.com/dev-guide/latest/programmer_ref/viewport/camera.html#look-at-a-prim
+    
+#     """
+
+#     # TODO float cast necesito?
+#     eye = numpy.asarray(eye, dtype="float")
+#     center = numpy.asarray(center, dtype="float")
+#     up_axis = numpy.asarray(up_axis, dtype="float")
+
+#     forward = center - eye
+#     forward /= numpy.linalg.norm(forward)
+#     right = numpy.cross(up_axis, forward)
+#     up = numpy.cross(forward, right)
+
+#     # TODO
+#     return numpy.stack((forward, right, up), axis=-1)
+#     # return numpy.stack((right, up, forward), axis=-1)
+
+
+# TODO
+# TODO
+import numpy
+
+def lookat(eye: ..., center: ..., up_axis: ... = [0, 0, 1]):
     """
+    TODO doc: column-vector convention
+    TODO doc: from eye to center
     TODO doc: right-handed coords: +X right, +Y up, +Z forward
 
+    TODO 
+    https://www.scratchapixel.com/lessons/mathematics-physics-for-computer-graphics/lookat-function/framing-lookat-function.html
     https://docs.omniverse.nvidia.com/dev-guide/latest/programmer_ref/viewport/camera.html#look-at-a-prim
     
     """
@@ -49,14 +80,15 @@ def lookat(eye: ..., center: ..., up_axis: ...):
     center = numpy.asarray(center, dtype="float")
     up_axis = numpy.asarray(up_axis, dtype="float")
 
-    forward = center - eye
+    forward = eye - center
     forward /= numpy.linalg.norm(forward)
     right = numpy.cross(up_axis, forward)
+    right /= numpy.linalg.norm(right)
     up = numpy.cross(forward, right)
 
     # TODO
-    return numpy.stack((forward, right, up), axis=-1)
-    # return numpy.stack((right, up, forward), axis=-1)
+    # return numpy.stack((forward, right, up), axis=-1)
+    return numpy.stack((right, up, forward), axis=-1)
 
 
 # TODO
@@ -65,14 +97,17 @@ class ProtoPose:
     q: ...  # TODO xyzw
     # radians: ... # TODO radian xyz
 
-
+# TODO doc: column-vector convention
+# TODO FIXME matrix should use last row as translation????
 # TODO FIXME perf
 # TODO support (*batch_dims, data)
 # TODO dataclass???
 # TODO testing
 class Pose:
-    p: ...  # TODO xyz
-    q: ...  # TODO xyzw
+    p: ...  
+    """TODO doc position (..., xyz)"""
+    q: ...  
+    """TODO doc quaternion (..., xyzw)"""
     # randians: ... # TODO radian xyz
     # degrees: ... # TODO radian xyz
 
@@ -132,18 +167,25 @@ class Pose:
             up_axis=up_axis,
         )
 
-    def rotated(self, angles):
+    def rotated(
+        self, 
+        radians: TensorLike["* xyz"] | None = None, 
+        degrees: TensorLike["* xyz"] | None = None,
+        intrinsic: bool = False,
+    ):
         # raise NotImplementedError
         # TODO
+        scipy_rotation = scipy.spatial.transform.Rotation.from_quat(self.q)
+        if radians is not None:
+            scipy_rotation *= scipy.spatial.transform.Rotation.from_euler("XYZ" if not intrinsic else "xyz", radians, degrees=False)
+        if degrees is not None:
+            scipy_rotation *= scipy.spatial.transform.Rotation.from_euler("XYZ" if not intrinsic else "xyz", degrees, degrees=True)
         return Pose(
             p=self.p,
-            q=(
-                scipy.spatial.transform.Rotation.from_quat(self.q)
-                * scipy.spatial.transform.Rotation.from_euler("XYZ", angles)
-            ).as_quat(),
+            q=scipy_rotation.as_quat(),
         )
 
-    def translated(self, positions):
+    def translated(self, offsets: TensorLike["* xyz"] | None = None):
         raise NotImplementedError
 
     # TODO FIXME performance

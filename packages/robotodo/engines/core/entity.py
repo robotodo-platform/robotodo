@@ -1,70 +1,92 @@
 import abc
 import enum
+from typing import Set, Type, TypeVar
 
 from tensorspecs import TensorLike
-from robotodo.utils.pose import Pose
-
-from robotodo.engines.core.material import ProtoMaterial
-
-
-# TODO deprecate
-# class EntityMotionKind(enum.IntEnum):
-#     """
-#     TODO doc
-#     https://maniskill.readthedocs.io/en/latest/user_guide/concepts/simulation_101.html#actor-types-dynamic-kinematic-static
-#     """
-#     NONE = -1
-#     STATIC = 0
-#     KINEMATIC = 1
-#     DYNAMIC = 2
-# TODO deprecate
+from robotodo.engines.core.path import PathExpressionLike
+# TODO
+from robotodo.engines.core.scene import ProtoScene
 
 
-class EntityBodyKind(enum.IntEnum):
-    NONE = -1
-    RIGID = 0
-    DEFORMABLE_VOLUME = 1
-    DEFORMABLE_SURFACE = 2
+_T = TypeVar("_T")
 
 
-class ProtoCollision(abc.ABC):
-    enabled: TensorLike["* value", bool]
-    on_contact: ...
-
-
-# TODO mv
-class ProtoElement(abc.ABC):
-    path: ...
-    parent: "ProtoElement"
-    children: list["ProtoElement"]
-
-
-# TODO mv ProtoBody???
 class ProtoEntity(abc.ABC):
-    label: ...
-    # path: Path
+    r"""
+    TODO doc
+    """
 
-    pose: Pose
-    # TODO
-    velocity: Pose
+    @classmethod
+    @abc.abstractmethod
+    def load_usd(
+        cls, 
+        ref: PathExpressionLike, 
+        source: str, 
+        scene: ProtoScene,
+    ):
+        ...
     
-    # parent: ProtoEntity
-    # pose_in_parent: Pose
+    @classmethod
+    @abc.abstractmethod
+    def load(
+        cls, 
+        ref: PathExpressionLike, 
+        source: str, 
+        scene: ProtoScene,
+    ):
+        ...
 
-    # TODO 
-    # kinematic: TensorLike["* value", bool]
-    # TODO deprecate
-    # motion_kind: TensorLike["* value", EntityMotionKind]
+    @classmethod
+    def __class_getitem__(cls, label: TensorLike["*", str] | None):
+        # TODO
+        label
+        return cls
 
-    collision: ProtoCollision
+    # TODO
+    @abc.abstractmethod
+    def __init__(
+        self, 
+        ref: "ProtoEntity | PathExpressionLike", 
+        scene: ProtoScene | None = None,
+    ):
+        ...
 
-    inertia: ...
+    # TODO necesito?
+    @property
+    # @abc.abstractmethod
+    def prototypes(self) -> Set[Type]:
+        ...
+        raise NotImplementedError
 
-    # TODO dedicated EntityGeometry??
-    geometry: ...
-    material: ProtoMaterial | None
-    body_kind: TensorLike["* value", EntityBodyKind]
-    mass: TensorLike["* value"] | None
-    mass_center: Pose | None
+    # TODO necesito?
+    # @abc.abstractmethod
+    def astype(self, prototype: Type[_T]) -> _T:
+        ...
+        raise NotImplementedError
 
+    def __repr__(self):
+        return (
+            f"""{self.__class__.__qualname__}"""
+            f"""{f"[{self.label!r}]" if self.label is not None else ""}"""
+            # TODO
+            f"""({self.path}, scene={self.scene})"""
+        )
 
+    @property
+    @abc.abstractmethod
+    def path(self) -> TensorLike["*", str]:
+        ...
+
+    @property
+    @abc.abstractmethod
+    def scene(self) -> ProtoScene:
+        ...
+
+    # TODO necesito??
+    # parent: "ProtoEntity"
+    # children: list["ProtoEntity"]
+
+    # TODO necesito??
+    @property
+    def label(self) -> TensorLike["*", str] | None:
+        return None

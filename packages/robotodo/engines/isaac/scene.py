@@ -3,26 +3,21 @@ import functools
 import contextlib
 import asyncio
 
-# TODO
 import numpy
-
+from robotodo.engines.core.error import InvalidReferenceError
 from robotodo.engines.core.path import PathExpression, PathExpressionLike
+from robotodo.engines.core.scene import ProtoScene
 # TODO
 from robotodo.utils.event import BaseSubscriptionPartialAsyncEventStream
+from robotodo.engines.isaac._kernel import Kernel, get_default_kernel
+from robotodo.engines.isaac._utils.usd import (
+    USDStageRef,
+    is_usd_stage_ref,
+    usd_get_stage_id, 
+    usd_create_stage, 
+    usd_load_stage,
+)
 
-# TODO
-from ._kernel import Kernel, get_default_kernel
-# from ._utils import usd_get_stage_id
-
-# TODO
-from ._kernel import Kernel
-
-def usd_get_stage_id(stage: "pxr.Usd.Stage", kernel: Kernel):
-    pxr = kernel.pxr
-    stage_cache = pxr.UsdUtils.StageCache.Get()
-    if not stage_cache.Contains(stage):
-        return stage_cache.Insert(stage)
-    return stage_cache.GetId(stage)
 
 # TODO
 # _USD_PHYSICSSCENE_PATH_DEFAULT = "/PhysicsScene"
@@ -71,33 +66,88 @@ class PhysicsStepAsyncEventStream(BaseSubscriptionPartialAsyncEventStream[float]
 
 # TODO multiple scenes are not supported!!!
 # TODO ? default scene: scene = Scene(); new scene: scene = engine.add(Scene())
-class Scene:
+class Scene(ProtoScene):
 
-    # TODO !!!!!
-    def __init__(self, _kernel: Kernel | None = None, _usd_stage_ref: ... = None):
+    @classmethod
+    def create(cls, _kernel: Kernel | None = None):
+        stage = usd_create_stage(kernel=_kernel)
+        return Scene(lambda: stage, _kernel=_kernel)
+    
+    # TODO
+    @classmethod
+    def load_usd(cls, source: str, _kernel: Kernel | None = None):
+        stage = usd_load_stage(source, kernel=_kernel)
+        return Scene(lambda: stage, _kernel=_kernel)
+    
+    # TODO
+    @classmethod
+    def load(cls, source: str, _kernel: Kernel | None = None):
+        # TODO !!!! check extension
+        return cls.load_usd(source=source, _kernel=_kernel)
+
+    class _USDKernelDefaultStageRef(USDStageRef):
+        def __init__(self, kernel: Kernel):
+            self._kernel = kernel
+
+        def __call__(self):
+            omni = self._kernel.omni
+            self._kernel.enable_extension("omni.usd")
+
+            # TODO !!!
+            stage = omni.usd.get_context().get_stage()
+            # TODO rm
+            if stage is None:
+                # TODO !!!!!  Stage opening or closing already in progress so async???
+                omni.usd.get_context().new_stage()
+                stage = omni.usd.get_context().get_stage()
+            # TODO check None
+            assert stage is not None
+            return stage
+
+    _usd_stage_ref: USDStageRef
+    _kernel: Kernel
+
+    def __init__(
+        self,
+        ref: USDStageRef | None = None,
+        _kernel: Kernel | None = None
+    ):
         # TODO !!!!!
         if _kernel is None:
             _kernel = get_default_kernel()
-        self._kernel = _kernel
-        self._usd_stage_ref = _usd_stage_ref
+        match ref:
+            case ref if is_usd_stage_ref(ref):
+                self._usd_stage_ref = ref
+                self._kernel = _kernel
+            case None:
+                self._usd_stage_ref = Scene._USDKernelDefaultStageRef(
+                    kernel=_kernel,
+                )
+                self._kernel = _kernel
+                ...
+            case _:
+                raise InvalidReferenceError(ref)
 
+    # TODO !!!!!
+    # def __init__(self, _usd_stage_ref: ... = None, _kernel: Kernel | None = None):
+    #     # TODO !!!!!
+    #     if _kernel is None:
+    #         _kernel = get_default_kernel()
+    #     self._kernel = _kernel
+    #     self._usd_stage_ref = _usd_stage_ref
+
+    def save(self, source: str | None = None):
+        if source is None:
+            stage = self._usd_stage_ref()
+            stage.Save()
+            stage.SaveSessionLayers()
+        # TODO
+        raise NotImplementedError("TODO")
+
+    # TODO rm?
     @property
     def _usd_stage(self):
-        if self._usd_stage_ref is not None:
-            return self._usd_stage_ref
-
-        self._kernel.enable_extension("omni.usd")
-
-        # TODO !!!
-        stage = self._kernel.omni.usd.get_context().get_stage()
-        # TODO rm
-        if stage is None:
-            # TODO !!!!!  Stage opening or closing already in progress so async???
-            self._kernel.omni.usd.get_context().new_stage()
-            stage = self._kernel.omni.usd.get_context().get_stage()
-        # TODO check None
-        assert stage is not None
-        return stage
+        return self._usd_stage_ref()
     
     @property
     def _isaac_physx(self):
@@ -311,10 +361,8 @@ class Scene:
     def on_step(self):
         return PhysicsStepAsyncEventStream(scene=self)
 
-    # TODO convenience
     @functools.cached_property
     def viewer(self):
-        from .viewer import SceneViewer
         return SceneViewer(scene=self)
 
     # TODO FIXME unit
@@ -326,4 +374,115 @@ class Scene:
     @gravity.setter
     def gravity(self, value: ...):
         # TODO tensor backend
-        self._isaac_physics_tensor_view.set_gravity(numpy.broadcast_to(value, 3))
+        self._isaac_physics_tensor_view.set_gravity(numpy.broadcast_to(value, shape=3))
+
+
+from typing import TypedDict, Unpack
+
+import numpy
+import einops
+from robotodo.utils.pose import Pose
+
+
+class SceneViewer:
+    def __init__(self, scene: Scene):
+        self._scene = scene
+
+    # TODO
+    def show(self):
+        pass
+
+    # TODO
+    @property
+    def selected_entity(self):
+        from robotodo.engines.isaac.entity import Entity
+
+        omni = self._scene._kernel.omni
+        # TODO ensure stage
+        selection = omni.usd.get_context().get_selection()
+        return Entity(selection.get_selected_prim_paths(), scene=self._scene)
+    
+    # TODO
+    @selected_entity.setter
+    def selected_entity(self, value):
+        from robotodo.engines.isaac.entity import Entity
+        # TODO
+        entity: Entity = value
+
+        # TODO ensure stage
+        omni = self._scene._kernel.omni
+        selection = omni.usd.get_context().get_selection()
+        selection.set_selected_prim_paths(entity.path)
+
+    # TODO
+    @property
+    def _isaac_debug_draw_interface(self):
+        # TODO
+        self._scene._kernel.enable_extension("isaacsim.util.debug_draw")
+        return (
+            self._scene._kernel.isaacsim.util.debug_draw._debug_draw
+            .acquire_debug_draw_interface()
+        )
+    
+        # TODO lifecycle
+        # isaacsim = self._scene._kernel.isaacsim
+        # isaacsim.util.debug_draw._debug_draw.release_debug_draw_interface
+
+    def clear_drawings(self):
+        iface = self._isaac_debug_draw_interface
+        iface.clear_points()
+        iface.clear_lines()
+
+    class DrawPoseOptions(TypedDict, total=False):
+        scale: float
+        line_thickness: float
+        line_opacity: float
+
+    def draw_pose(
+        self, 
+        pose: Pose, 
+        options: DrawPoseOptions = DrawPoseOptions(),
+        **options_kwds: Unpack[DrawPoseOptions],
+    ):
+        """
+        TODO doc
+
+
+        """
+
+        options = self.DrawPoseOptions(options, **options_kwds)
+
+        scale: float = options.get("scale", 1.)
+        line_thickness: float = options.get("line_thickness", 2)
+        line_opacity: float = options.get("line_opacity", .5)
+
+        # TODO x y z
+        for mask in (
+            numpy.asarray([1., 0., 0.]),
+            numpy.asarray([0., 1., 0.]),
+            numpy.asarray([0., 0., 1.]),
+        ):
+            start_points = pose.p
+            # TODO
+            end_points = (pose * Pose(p=mask * [scale, scale, scale])).p
+
+            start_points, _ = einops.pack([start_points], "* xyz")
+            end_points, _ = einops.pack([end_points], "* xyz")
+
+            colors = einops.repeat(
+                numpy.asarray([*mask, line_opacity]),
+                "rgba -> b rgba",
+                **einops.parse_shape(start_points, "b _"),
+            )
+            thicknesses = einops.repeat(
+                numpy.asarray(line_thickness),
+                "-> b",
+                **einops.parse_shape(start_points, "b _"),
+            )
+
+            self._isaac_debug_draw_interface.draw_lines(
+                numpy.asarray(start_points).tolist(), 
+                numpy.asarray(end_points).tolist(), 
+                numpy.asarray(colors).tolist(), 
+                numpy.asarray(thicknesses).tolist(),
+            )

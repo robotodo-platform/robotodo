@@ -1,8 +1,8 @@
 
-import enum
 import functools
 import warnings
 import dataclasses
+from typing import Type, Unpack
 
 # TODO
 import torch
@@ -14,6 +14,8 @@ from robotodo.engines.core.path import (
     PathExpressionLike, 
     is_path_expression_like,
 )
+from robotodo.engines.core.error import InvalidReferenceError
+from robotodo.engines.core.entity import ProtoEntity
 from robotodo.engines.core.articulation import (
     Axis,
     JointKind, 
@@ -22,81 +24,122 @@ from robotodo.engines.core.articulation import (
     ProtoRevoluteJoint,
     ProtoPrismaticJoint,
     ProtoSphericalJoint,
+    ProtoArticulation,
 )
+from robotodo.engines.isaac._kernel import Kernel
+from robotodo.engines.isaac.body import Body
 from robotodo.engines.isaac.entity import Entity
 from robotodo.engines.isaac.scene import Scene
 # TODO
-from robotodo.engines.isaac._utils_next import (
+from robotodo.engines.isaac._utils.usd import (
     USDPrimRef, 
     is_usd_prim_ref,
     USDPrimPathRef, 
     USDPrimPathExpressionRef,
     usd_physx_query_articulation_properties,
+    usd_import_urdf,
 )
 
 
 class Joint(ProtoJoint):
-    @dataclasses.dataclass(slots=True)
-    class _ImplMetadata:
-        label: str
-        label_body0: str
-        label_body1: str
+    # __slots__ = ["_usd_prim_ref", "_scene"]
 
-    __slots__ = ["_usd_prims_ref", "_scene"]
+    _usd_prim_ref: USDPrimRef
+    _scene: Scene
+
+    _impl_label: str | None = None
+    _impl_label_body0: str | None = None
+    _impl_label_body1: str | None = None
+
+    # TODO
+    @classmethod
+    def create(cls):
+        raise NotImplementedError
+
+    @classmethod
+    def load_usd(cls, ref: PathExpressionLike, source: str, scene: Scene):
+        return cls(Entity.load_usd(ref, source=source, scene=scene))
+    
+    @classmethod
+    def load(cls, ref: PathExpressionLike, source: str, scene: Scene):
+        # TODO
+        return cls.load_usd(
+            ref=ref,
+            source=source,
+            scene=scene,
+        )
 
     # TODO use _kernel
     def __init__(
         self, 
-        ref: "Joint | Entity | PathExpressionLike | USDPrimRef", 
+        ref: "Joint | Entity | USDPrimRef | PathExpressionLike", 
         scene: Scene | None = None,
-        _impl_metadata: _ImplMetadata | None = None,
     ):
         # TODO
         match ref:
+            # TODO merge with Entity as ProtoEntity
             case Joint() as joint:
                 assert scene is None
-                self._usd_prims_ref = joint._usd_prims_ref
+                self._usd_prim_ref = joint._usd_prim_ref
                 self._scene = joint._scene
-                if _impl_metadata is None:
-                    _impl_metadata = joint._impl_metadata
-            case _ if is_usd_prim_ref(ref):
-                # TODO
-                assert scene is not None
-                self._usd_prims_ref = ref
-                self._scene = scene
             case Entity() as entity:
                 # TODO
                 assert scene is None
-                self._usd_prims_ref = entity._usd_prims_ref
-                self._scene = entity._scene
+                self._usd_prim_ref = entity._usd_prim_ref
+                self._scene = entity._scene                    
+            case ref if is_usd_prim_ref(ref):
+                # TODO
+                assert scene is not None
+                self._usd_prim_ref = ref
+                self._scene = scene
             case expr if is_path_expression_like(ref):
                 # TODO
                 assert scene is not None
-                self._usd_prims_ref = USDPrimPathExpressionRef(
+                self._usd_prim_ref = USDPrimPathExpressionRef(
                     expr,
                     stage_ref=lambda: scene._usd_stage,
                 )
                 self._scene = scene
             case _:
-                raise ValueError(f"Invalid reference type {type(ref)}: {ref}")
-        self._impl_metadata = _impl_metadata
+                raise InvalidReferenceError(ref)
 
+    # TODO
     @property
-    def _usd_prims(self):
-        # TODO
-        return self._usd_prims_ref()
+    def prototypes(self):
+        raise NotImplementedError
+
+    # TODO !!!! 
+    def astype(self, prototype):
+        match prototype:
+            case _ if issubclass(prototype, ProtoFixedJoint):
+                return FixedJoint(self)
+            case _ if issubclass(prototype, ProtoRevoluteJoint):
+                return RevoluteJoint(self)
+            case _ if issubclass(prototype, ProtoPrismaticJoint):
+                return PrismaticJoint(self)
+            case _ if issubclass(prototype, ProtoSphericalJoint):
+                return SphericalJoint(self)
+            case _ if issubclass(prototype, ProtoEntity):
+                # TODO
+                raise NotImplementedError("TODO")        
+            case _:
+                raise ValueError("TODO")
     
     @property
     def path(self):
         return [
             prim.GetPath().pathString
-            for prim in self._usd_prims
+            for prim in self._usd_prim_ref()
         ]
     
     @property
+    def scene(self):
+        return self._scene
+    
+    @property
     def label(self):
-        if self._impl_metadata is not None:
-            return self._impl_metadata.label
+        if self._impl_label is not None:
+            return self._impl_label
         return super().label
     
     @property
@@ -104,7 +147,7 @@ class Joint(ProtoJoint):
         # TODO
         pxr = self._scene._kernel.pxr
         value = []
-        for prim in self._usd_prims:
+        for prim in self._usd_prim_ref():
             v = JointKind.UNKNOWN
             match prim:
                 case _ if prim.IsA(pxr.UsdPhysics.FixedJoint):
@@ -113,6 +156,8 @@ class Joint(ProtoJoint):
                     v = JointKind.PRISMATIC
                 case _ if prim.IsA(pxr.UsdPhysics.RevoluteJoint):
                     v = JointKind.REVOLUTE
+                case _ if prim.IsA(pxr.UsdPhysics.SphericalJoint):
+                    v = JointKind.SPHERICAL
                 case _:
                     # TODO
                     warnings.warn(f"USD joint currently not supported: {prim}")
@@ -126,7 +171,7 @@ class Joint(ProtoJoint):
 
         body_prim_paths = []
 
-        for prim in self._usd_prims:
+        for prim in self._usd_prim_ref():
             api = pxr.UsdPhysics.Joint(prim)
             targets = api.GetBody0Rel().GetTargets()
             # TODO
@@ -134,15 +179,16 @@ class Joint(ProtoJoint):
             body_prim_paths.append(target.pathString)
 
         # TODO
-        return Entity._from_usd_prim_ref(
-            ref=USDPrimPathRef(
+        body = Body(
+            USDPrimPathRef(
                 paths=body_prim_paths,
                 stage_ref=lambda: self._scene._usd_stage,
             ),
             scene=self._scene,
-            # TODO
-            _label=self._impl_metadata.label_body0,
         )
+        body._impl_label = self._impl_label_body0
+
+        return body
 
     @property
     def pose_in_body0(self):
@@ -151,7 +197,7 @@ class Joint(ProtoJoint):
         positions = []
         rotations = []
 
-        for prim in self._usd_prims:
+        for prim in self._usd_prim_ref():
             api = pxr.UsdPhysics.Joint(prim)
             pos_vec3 = api.GetLocalPos0Attr().Get()
             rot_quat = api.GetLocalRot0Attr().Get()
@@ -170,7 +216,7 @@ class Joint(ProtoJoint):
 
         body_prim_paths = []
 
-        for prim in self._usd_prims:
+        for prim in self._usd_prim_ref():
             api = pxr.UsdPhysics.Joint(prim)
             targets = api.GetBody1Rel().GetTargets()
             # TODO
@@ -178,15 +224,16 @@ class Joint(ProtoJoint):
             body_prim_paths.append(target.pathString)
 
         # TODO
-        return Entity._from_usd_prim_ref(
-            ref=USDPrimPathRef(
+        body = Body(
+            USDPrimPathRef(
                 paths=body_prim_paths,
-                stage_ref=lambda: self._scene._usd_stage
+                stage_ref=lambda: self._scene._usd_stage,
             ),
             scene=self._scene,
-            # TODO
-            _label=self._impl_metadata.label_body1,
         )
+        body._impl_label = self._impl_label_body1
+
+        return body
 
     @property
     def pose_in_body1(self):
@@ -195,7 +242,7 @@ class Joint(ProtoJoint):
         positions = []
         rotations = []
 
-        for prim in self._usd_prims:
+        for prim in self._usd_prim_ref():
             api = pxr.UsdPhysics.Joint(prim)
             pos_vec3 = api.GetLocalPos1Attr().Get()
             rot_quat = api.GetLocalRot1Attr().Get()
@@ -210,17 +257,17 @@ class Joint(ProtoJoint):
 
 
 # TODO
-class FixedJoint(ProtoFixedJoint, Joint):
+class FixedJoint(Joint, ProtoFixedJoint):
     pass
 
 
-class RevoluteJoint(ProtoRevoluteJoint, Joint):
+class RevoluteJoint(Joint, ProtoRevoluteJoint):
     @property
     def axis(self):
         pxr = self._scene._kernel.pxr
 
         value = []
-        for prim in self._usd_prims:
+        for prim in self._usd_prim_ref():
             api = pxr.UsdPhysics.RevoluteJoint(prim)
             v = Axis.UNKNOWN
             if not api:
@@ -237,13 +284,12 @@ class RevoluteJoint(ProtoRevoluteJoint, Joint):
 
         return numpy.asarray(value)
     
-    # TODO deg or rad???
     @property
     def position_limit(self):
         pxr = self._scene._kernel.pxr
 
         value = []
-        for prim in self._usd_prims:
+        for prim in self._usd_prim_ref():
             api = pxr.UsdPhysics.RevoluteJoint(prim)
             v = [numpy.nan, numpy.nan]
             if not api:
@@ -254,17 +300,16 @@ class RevoluteJoint(ProtoRevoluteJoint, Joint):
 
         # TODO
         return numpy.deg2rad(value)
-        # return numpy.asarray(value)
 
 
 # TODO
-class PrismaticJoint(ProtoPrismaticJoint, Joint):
+class PrismaticJoint(Joint, ProtoPrismaticJoint):
     @property
     def axis(self):
         pxr = self._scene._kernel.pxr
 
         value = []
-        for prim in self._usd_prims:
+        for prim in self._usd_prim_ref():
             api = pxr.UsdPhysics.PrismaticJoint(prim)
             v = Axis.UNKNOWN
             if not api:
@@ -286,7 +331,7 @@ class PrismaticJoint(ProtoPrismaticJoint, Joint):
         pxr = self._scene._kernel.pxr
 
         value = []
-        for prim in self._usd_prims:
+        for prim in self._usd_prim_ref():
             api = pxr.UsdPhysics.PrismaticJoint(prim)
             v = [numpy.nan, numpy.nan]
             if not api:
@@ -298,61 +343,113 @@ class PrismaticJoint(ProtoPrismaticJoint, Joint):
         return numpy.asarray(value)
     
 
+# TODO
+class SphericalJoint(Joint, ProtoSphericalJoint):
+    pass
+
+
 # TODO NOTE must be homogenous
 # TODO FIXME write operations may not sync to the USD stage unless .step called
-class Articulation:
-    # TODO next
+class Articulation(ProtoArticulation):
+
+    class _USDArticulationRootPrimRef:
+        def __init__(self, ref: USDPrimRef, kernel: Kernel):
+            self._ref = ref
+            self._kernel = kernel
+
+        def __call__(self):
+            pxr = self._kernel.pxr
+
+            return [
+                maybe_root_prim
+                for prim in self._ref()
+                # NOTE this already includes the prim itself
+                for maybe_root_prim in pxr.Usd.PrimRange(
+                    prim, 
+                    # TODO rm???
+                    # pxr.Usd.TraverseInstanceProxies(
+                    #     pxr.Usd.PrimAllPrimsPredicate
+                    # ),
+                )
+                if maybe_root_prim.HasAPI(pxr.UsdPhysics.ArticulationRootAPI)
+            ]
+
+    # TODO
+    _usd_prim_ref: USDPrimRef
+    _scene: Scene
+
+    # TODO
     @classmethod
-    def create(cls):
+    def create(cls, ref: PathExpressionLike, source: str, scene: Scene):
         raise NotImplementedError
 
-    # TODO next
+    @classmethod
+    def load_usd(cls, ref: PathExpressionLike, source: str, scene: Scene):
+        return cls(Entity.load_usd(ref, source=source, scene=scene))
+    
+    @classmethod
+    def load_urdf(cls, ref: PathExpressionLike, source: str, scene: Scene):
+        expr = PathExpression(ref)
+        prims = usd_import_urdf(
+            stage=scene._usd_stage,
+            paths=expr.expand(),
+            resource_or_model=source,
+            kernel=scene._kernel,
+        )
+        return cls(lambda: prims, scene=scene)
+
+    @classmethod
+    def load(cls, ref: PathExpressionLike, source: str, scene: Scene):
+        # TODO
+        import pathlib
+        import urllib.parse
+
+        match pathlib.Path(urllib.parse.urlparse(source).path).suffixes:
+            # TODO rm: usd has custom format handlers for this so no need?
+            # case [".usd"]:
+            #     return cls.load_usd(ref=ref, source=source, scene=scene)
+            case [".urdf"]:
+                return cls.load_urdf(ref=ref, source=source, scene=scene)
+            case _:
+                return cls.load_usd(ref=ref, source=source, scene=scene)
+
     def __init__(
         self,
-        ref: Entity | PathExpressionLike,
+        ref: "Articulation | Entity | PathExpressionLike | USDPrimRef",
         scene: Scene | None = None,
+        exact: bool = False,
     ):
         match ref:
-            case Entity():
-                pass
+            case Articulation() as articulation:
+                assert scene is None
+                self._usd_prim_ref = articulation._usd_prim_ref
+                self._scene = articulation._scene
+            case Entity() as entity:
+                assert scene is None
+                self._usd_prim_ref = entity._usd_prim_ref
+                self._scene = entity._scene
+            case ref if is_usd_prim_ref(ref):
+                # TODO
+                assert scene is not None
+                self._usd_prim_ref = ref
+                self._scene = scene
+            case expr if is_path_expression_like(ref):
+                # TODO
+                assert scene is not None
+                self._usd_prim_ref = USDPrimPathExpressionRef(
+                    expr,
+                    stage_ref=lambda: scene._usd_stage,
+                )
+                self._scene = scene
             case _:
-                pass
-        raise NotImplementedError
-        ...
-
-    # TODO accept entity as well !!!!
-    def __init__(self, path: PathExpressionLike, scene: Scene):
-        self._scene = scene
-        # TODO
-        self._path = PathExpression(path)
-
-    # TODO FIXME: perf
-    @property
-    def _usd_prims(self):
-        return [
-            self._scene._usd_stage.GetPrimAtPath(path)
-            for path in self._scene.resolve(self._path)
-        ]
-
-    # TODO FIXME: perf
-    @property
-    def _usd_articulation_root_prims(self):
-        pxr = self._scene._kernel.pxr
-
-        return [
-            maybe_root_prim
-            for prim in self._usd_prims
-            # NOTE this already includes the prim itself
-            for maybe_root_prim in pxr.Usd.PrimRange(
-                prim, 
-                # TODO rm???
-                # pxr.Usd.TraverseInstanceProxies(
-                #     pxr.Usd.PrimAllPrimsPredicate
-                # ),
+                raise InvalidReferenceError(ref)
+            
+        if not exact:
+            self._usd_prim_ref = Articulation._USDArticulationRootPrimRef(
+                ref=self._usd_prim_ref,
+                kernel=self._scene._kernel,
             )
-            if maybe_root_prim.HasAPI(pxr.UsdPhysics.ArticulationRootAPI)
-        ]
-
+            
     @functools.cached_property
     def _isaac_physics_articulation_view_cache(self):
         # TODO
@@ -360,7 +457,7 @@ class Articulation:
         try:
             resolved_root_paths = [
                 prim.GetPath().pathString
-                for prim in self._usd_articulation_root_prims
+                for prim in self._usd_prim_ref()
             ]
             self._scene._isaac_physx_simulation.flush_changes()
             isaac_physics_tensor_view = self._scene._isaac_physics_tensor_view
@@ -395,7 +492,7 @@ class Articulation:
     @property
     def _isaac_physx_articulation_properties(self):
         return usd_physx_query_articulation_properties(
-            self._usd_articulation_root_prims,
+            self._usd_prim_ref(),
             kernel=self._scene._kernel,
         )
             
@@ -403,6 +500,10 @@ class Articulation:
     @property
     def path(self):
         return self._isaac_physics_articulation_view.prim_paths
+
+    @property
+    def scene(self):
+        return self._scene
 
     # # TODO cache
     # # @functools.cached_property
@@ -427,6 +528,26 @@ class Articulation:
     #         )
     #         for joint_index in range(n_joints)
     #     }
+
+    @property
+    def pose(self):
+        view = self._isaac_physics_articulation_view
+        root_trans = view.get_root_transforms()
+        return Pose(
+            p=root_trans[..., [0, 1, 2]],
+            q=root_trans[..., [3, 4, 5, 6]],
+        )
+    
+    @pose.setter
+    def pose(self, value: Pose):
+        view = self._isaac_physics_articulation_view
+        value_ = torch.broadcast_to(
+            torch.concat((torch.asarray(value.p), torch.asarray(value.q)), dim=-1), 
+            size=(view.count, 7),
+        )
+        view.set_root_transforms(value_, indices=torch.arange(view.count))
+        # TODO
+        # self._scene._isaac_physics_tensor_ensure_sync()
 
     @property
     def joints(self):
@@ -462,19 +583,17 @@ class Articulation:
                     )
                 joint_name_path_mapping[joint_name][articulation_index] = joint_path
 
-        return {
-            joint_name: Joint(
+        joints = dict[str, Joint]()
+        for joint_index, joint_name in enumerate(joint_names):
+            joint = Joint(
                 joint_name_path_mapping[joint_name],
                 scene=self._scene,
-                # TODO !!!
-                _impl_metadata=Joint._ImplMetadata(
-                    label=joint_name,
-                    label_body0=body0_names[joint_index],
-                    label_body1=body1_names[joint_index],
-                ),
             )
-            for joint_index, joint_name in enumerate(joint_names)
-        }
+            joint._impl_label = joint_name
+            joint._impl_label_body0 = body0_names[joint_index]
+            joint._impl_label_body1 = body1_names[joint_index]
+            joints[joint_name] = joint
+        return joints
 
     # TODO
     @property
@@ -488,50 +607,12 @@ class Articulation:
 
         *_, n_links = link_paths.shape
         return {
-            link_names[link_index]: Entity(
+            link_names[link_index]: Body(
                 link_paths[..., link_index],
                 scene=self._scene,
             )
             for link_index in range(n_links)
         }
-
-    # TODO ###############
-    @property
-    def link_count(self):
-        return self._isaac_physics_articulation_view.shared_metatype.link_count
-
-    # TODO
-    @property
-    def link_names(self):
-        return self._isaac_physics_articulation_view.shared_metatype.link_names
-
-    # TODO !!!!! necesito???
-    @property
-    def link_paths(self):
-        return self._isaac_physics_articulation_view.link_paths
-
-    # TODO necesito?
-    @property
-    def link_poses(self):
-        """
-        TODO doc
-
-        """
-
-        view = self._isaac_physics_articulation_view
-        link_transforms = view.get_link_transforms()
-
-        return Pose(
-            p=link_transforms[..., [0, 1, 2]],
-            q=link_transforms[..., [3, 4, 5, 6]],
-        )
-    # TODO ###############
-
-    # TODO ###################
-    @property
-    def joint_names(self):
-        return self._isaac_physics_articulation_view.shared_metatype.joint_names
-    # #################
 
     @property
     def dof_count(self):
@@ -546,7 +627,7 @@ class Articulation:
 
     # TODO
     @property
-    def dof_types(self):
+    def dof_kinds(self):
         view = self._isaac_physics_articulation_view
         return view.get_dof_types()
 
@@ -593,27 +674,48 @@ class Articulation:
     @functools.cached_property
     def driver(self):
         return ArticulationDriver(articulation=self)
-
-    # TODO deprecate ############
-    @property
-    def root_pose(self):
-        view = self._isaac_physics_articulation_view
-        root_trans = view.get_root_transforms()
-        return Pose(
-            p=root_trans[..., [0, 1, 2]],
-            q=root_trans[..., [3, 4, 5, 6]],
-        )
     
-    @root_pose.setter
-    def root_pose(self, value: Pose):
-        view = self._isaac_physics_articulation_view
-        value_ = torch.broadcast_to(
-            torch.concat((torch.asarray(value.p), torch.asarray(value.q)), dim=-1), 
-            size=(view.count, 7),
-        )
-        view.set_root_transforms(value_, indices=torch.arange(view.count))
-        self._scene._isaac_physics_tensor_ensure_sync()
-    # TODO deprecate ############
+    # @functools.lru_cache
+    def planner(self, **planner_kwds: Unpack["ArticulationPlanner.Config"]):
+        return ArticulationPlanner(self, **planner_kwds)
+
+    # # TODO deprecate ############
+    # # TODO necesito?
+    # @property
+    # def link_poses(self):
+    #     """
+    #     TODO doc
+
+    #     """
+
+    #     view = self._isaac_physics_articulation_view
+    #     link_transforms = view.get_link_transforms()
+
+    #     return Pose(
+    #         p=link_transforms[..., [0, 1, 2]],
+    #         q=link_transforms[..., [3, 4, 5, 6]],
+    #     )
+    # # TODO deprecate ############
+
+
+
+# TODO
+import functools
+from typing import TypedDict, Unpack
+
+from tensorspecs import TensorTableLike, TensorSpec, TensorTableSpec
+
+
+
+# TODO mv
+ArticulationAction = TensorTableLike[{
+    # TODO -or- namedtensor??
+    "dof_names": TensorSpec("dof"),
+    # TODO waypoint optional?
+    "dof_positions": TensorSpec("n? timestep dof"),
+    "dof_velocities": TensorSpec("n? timestep dof"),
+}]
+"""TODO doc articulation action protocol type"""
 
 
 class ArticulationDriver:
@@ -671,12 +773,6 @@ class ArticulationDriver:
         value_ = torch.broadcast_to(torch.asarray(value), (view.count, view.max_dofs))
         view.set_dof_actuation_forces(value_, indices=torch.arange(view.count))
 
-    # TODO mv and stdize
-    class DriveType(enum.Enum):
-        Disabled = 0
-        Force = 1
-        Acceleration = 2
-
     # TODO typing: DriveType
     @property
     def dof_drive_types(self):
@@ -704,3 +800,169 @@ class ArticulationDriver:
         view = self._articulation._isaac_physics_articulation_view
         value_ = torch.broadcast_to(torch.asarray(value), (view.count, view.max_dofs))
         view.set_dof_velocity_targets(value_, indices=torch.arange(view.count))
+
+    # TODO
+    async def execute_action(
+        self, 
+        # TODO
+        action: "ArticulationAction",
+        # TODO
+        position_error_limit: float = 1e-1,
+        velocity_error_limit: float = 1e-1,
+    ):
+        dof_indices = numpy.s_[:]
+
+        dof_names = action.get("dof_names", None)
+        if dof_names is not None:
+            # TODO support native .index(<batch_dof_names>)
+            dof_indices = [
+                self._articulation.dof_names.index(dof_name)
+                for dof_name in dof_names
+            ]
+
+        dof_positions = action.get("dof_positions", None)
+        dof_velocities = action.get("dof_velocities", None)
+
+        if dof_positions is None or dof_velocities is None:
+            # TODO
+            raise NotImplementedError
+
+        n_p, n_timesteps_p, n_dofs_p = numpy.shape(dof_positions)
+        n_v, n_timesteps_v, n_dofs_v = numpy.shape(dof_velocities)
+
+        # TODO
+        assert n_p == n_v
+        assert n_timesteps_p == n_timesteps_v
+        assert n_dofs_p == n_dofs_v
+
+        n_timesteps = n_timesteps_p
+
+        for timestep in range(n_timesteps):
+            dof_target_positions = self.dof_target_positions
+            # TODO torch 
+            dof_target_positions[..., dof_indices] = dof_positions[:, timestep, :].to(dof_target_positions.device)
+            self.dof_target_positions = dof_target_positions
+
+            dof_target_velocities = self.dof_target_velocities
+            # TODO torch 
+            dof_target_velocities[..., dof_indices] = dof_velocities[:, timestep, :].to(dof_target_positions.device)
+            self.dof_target_velocities = dof_target_velocities
+
+            # TODO use dt for timeout
+            async for _ in self._articulation._scene.on_step:
+                position_err = (
+                    self._articulation.dof_positions[..., dof_indices] 
+                        - self.dof_target_positions[..., dof_indices]
+                )
+                velocity_err = (
+                    self._articulation.dof_velocities[..., dof_indices] 
+                        - self.dof_target_velocities[..., dof_indices]
+                )
+
+                # TODO
+                # print(position_err, velocity_err)
+
+                if all([
+                    numpy.allclose(position_err, 0., atol=position_error_limit),
+                    numpy.allclose(velocity_err, 0., atol=velocity_error_limit),
+                ]):
+                    break
+
+
+# TODO
+import functools
+from typing import TypedDict, Unpack
+
+from tensorspecs import TensorTableLike, TensorSpec, TensorTableSpec
+# TODO
+# from robotodo.algos.motion_planning.reach import MotionPlanner
+
+
+class ArticulationPlanner:
+    class Config(TypedDict, total=False):
+        base_link: str
+        end_link: str
+        # TODO
+        use_self_collision: bool
+        use_world_collision: bool
+
+    # TODO
+    def __init__(
+        self, 
+        articulation: Articulation, 
+        config: Config | dict = dict(),
+        **config_kwds: Unpack[Config],
+    ):
+        self._articulation = articulation
+        self._config = ArticulationPlanner.Config(config, **config_kwds)
+
+    # TODO
+    @functools.cached_property
+    def _backend(self):
+        # TODO
+        from robotodo.algos.motion_planning.reach import MotionPlanner
+
+        return MotionPlanner(
+            # TODO articulation.kinematics?
+            list(self._articulation.joints.values()),
+            config=MotionPlanner.Config({
+                "base_link": self._config["base_link"],
+                "end_link": self._config["end_link"],
+                **self._config,
+            }),
+        )
+    
+    @property
+    def observation_spec(self):
+        n_dofs = len(self._backend.dof_names)
+        # TODO named indexing
+        return TensorTableSpec({
+            # TODO also dof_names???
+            "dof_positions": TensorSpec("n? dof", shape={"dof": n_dofs}),
+            # "target_pose": PoseSpec("n?"),
+            # "target_pose_from_base": PoseSpec("n?"),
+            # "target_pose_candidates": PoseSpec("n? candidate"),
+            # "target_pose_from_base_candidates": PoseSpec("n? candidate"),
+            # "obstacles": ...,
+        })
+        
+    @property
+    def action_spec(self):
+        n_dofs = len(self._backend.dof_names)
+        return TensorTableSpec({
+            # TODO -or- namedtensor??
+            "dof_names": TensorSpec("dof", shape={"dof": n_dofs}),
+            "dof_positions": TensorSpec("n? timestep dof", shape={"dof": n_dofs}),
+            "dof_velocities": TensorSpec("n? timestep dof", shape={"dof": n_dofs}),
+        })
+
+    # TODO
+    def compute_action(
+        self, 
+        observation: TensorTableLike[observation_spec],
+    ) -> TensorTableLike[action_spec] | ArticulationAction:
+        
+        dof_positions = observation.get("dof_positions", None)
+        if dof_positions is None:
+            # TODO cache index
+            dof_positions = self._articulation.dof_positions[..., [
+                self._articulation.dof_names.index(name)
+                for name in self._backend.dof_names
+            ]]
+
+        target_pose_from_base = observation.get("target_pose_from_base", None)
+        if target_pose_from_base is None:
+            target_pose = observation.get("target_pose", None)
+            if target_pose is None:
+                # TODO msg
+                raise ValueError("TODO")
+            target_pose_from_base = (
+                self._articulation.links[self._backend.base_link].pose.inv()
+                * target_pose
+            )
+            
+        return self._backend.compute_action({
+            "dof_positions": dof_positions,
+            "target_pose": target_pose_from_base,
+        })
+

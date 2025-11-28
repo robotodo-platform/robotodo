@@ -591,8 +591,12 @@ class TensorSpec(BaseSpec):
     def validate(self):
         raise NotImplementedError
 
+
+import numpy.typing
 from typing import Protocol, Mapping
 
+
+# TODO
 class TensorLike:
     """
     This protocol class describes any data structure that 
@@ -603,7 +607,8 @@ class TensorLike:
     """
 
     def __class_getitem__(cls, spec: TensorSpec | str | tuple[str, str | Type]):
-        return Annotated[Mapping, spec]
+        # TODO
+        return Annotated[numpy.typing.NDArray, spec]
 
 
 from typing import Annotated, Mapping

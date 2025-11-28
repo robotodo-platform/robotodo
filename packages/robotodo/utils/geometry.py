@@ -3,6 +3,7 @@ TODO doc
 """
 
 
+import abc
 import dataclasses
 import warnings
 
@@ -13,30 +14,40 @@ import einops
 from tensorspecs import TensorLike
 
 
+class ProtoGeometry(abc.ABC):
+    transform: TensorLike["* 4 4"] | None = None
+    """TODO doc: shall be col-vec"""
+
+
 @dataclasses.dataclass(slots=True)
-class Plane:
+class Plane(ProtoGeometry):
     size: TensorLike["*? xy:2", "float"] \
         = dataclasses.field(default_factory=lambda: [1., 1.])
+    transform: TensorLike["* 4 4"] | None = None
 
 
+# TODO mv Cuboid
 @dataclasses.dataclass(slots=True)
-class Box:
+class Box(ProtoGeometry):
     size: TensorLike["*? xyz:3", "float"] \
         = dataclasses.field(default_factory=lambda: [1., 1., 1.])
+    transform: TensorLike["* 4 4"] | None = None
 
 
 @dataclasses.dataclass(slots=True)
-class Sphere:
+class Sphere(ProtoGeometry):
     radius: TensorLike["*?", "float"] \
         = dataclasses.field(default_factory=lambda: 1.)
+    transform: TensorLike["* 4 4"] | None = None
 
 
 @dataclasses.dataclass(slots=True)
-class PolygonMesh:
+class PolygonMesh(ProtoGeometry):
     vertices: TensorLike["*? vertex xyz:3", "float"]
     face_vertex_counts: TensorLike["*? face", "int"]
     # TODO doc len(face_vertex_indices) == sum(face_vertex_counts)
     face_vertex_indices: TensorLike["*? face_vertex", "int"]
+    transform: TensorLike["* 4 4"] | None = None
 
     # TODO patches
     @classmethod
@@ -79,6 +90,7 @@ class PolygonMesh:
             vertices=vertices,
             face_vertex_counts=face_vertex_counts,
             face_vertex_indices=face_vertex_indices,
+            transform=plane.transform,
         )
 
     # TODO ref omni.physx.scripts.physicsUtils.create_mesh_cube
@@ -130,12 +142,29 @@ class PolygonMesh:
             vertices=vertices,
             face_vertex_counts=face_vertex_counts,
             face_vertex_indices=face_vertex_indices,  
+            transform=box.transform,
         )
     
     @classmethod
     def from_sphere(cls, sphere: Sphere = Sphere()):
         # TODO
         raise NotImplementedError
+    
+    # TODO
+    @classmethod
+    def from_geometry(cls, geometry: ...):
+        raise NotImplementedError
+    
+    # TODO rm?
+    # def apply_transform(self, matrix: TensorLike["* 4 4"]):
+    #     return PolygonMesh(
+    #         vertices=numpy.matmul(
+    #             matrix, 
+    #             numpy.concatenate((self.vertices, 1.), axis=-1),
+    #         ),
+    #         face_vertex_counts=self.face_vertex_counts,
+    #         face_vertex_indices=self.face_vertex_indices,
+    #     )
 
     # TODO FIXME batching
     # TODO FIXME perf
@@ -175,6 +204,7 @@ class PolygonMesh:
             vertices=vertices,
             face_vertex_counts=3,
             face_vertex_indices=numpy.asarray(tri_face_vertex_indices),
+            transform=self.transform,
         )
 
 
@@ -185,7 +215,7 @@ class GeometryCollection:
 
 
 # TODO FIXME batching
-def export_trimesh(geometry: Plane | Box | PolygonMesh):
+def export_trimesh(geometry: Plane | Box | PolygonMesh, **trimesh_kwds):
     try:
         import trimesh
     except ModuleNotFoundError as error:
@@ -204,18 +234,26 @@ def export_trimesh(geometry: Plane | Box | PolygonMesh):
             for face_vertex_count in (3, 4):
                 if numpy.array_equiv(geometry.face_vertex_counts, face_vertex_count):
                     # TODO batch???
-                    return trimesh.Trimesh(
+                    res = trimesh.Trimesh(
                         vertices=geometry.vertices,
                         faces=numpy.reshape(geometry.face_vertex_indices, (-1, face_vertex_count)),
+                        **trimesh_kwds,
                     )
+                    if geometry.transform is not None:
+                        # TODO does trimesh use col-vec? confirm
+                        res = res.apply_transform(geometry.transform)
+                    return res
             warnings.warn(
                 f"{PolygonMesh} with non-triangular or non-quad faces are "
                 f"not supported by trimesh, converting: {geometry}"
             )
             return export_trimesh(geometry=geometry.triangulate())
         
+    # TODO transform
+        
     # TODO raise
     warnings.warn(f"TODO WIP: {geometry}")
+    return None
 
 
 # TODO

@@ -1,14 +1,19 @@
 import functools
 from typing import Any, Sequence, Iterable
+from types import EllipsisType
 
 # TODO
 import numpy
+import numpy.typing
 import bracex
 import wcmatch.fnmatch
 
 
+# TODO allow ellipsis??
 class PathExpression:
     __slots__ = ["_expr"]
+
+    # _expr: ...
 
     def __init__(self, expr: "PathExpressionLike"):
         # TODO validate
@@ -50,11 +55,26 @@ class PathExpression:
     def match(self, path: str):
         return self._cached_matcher(self._expr).match(path)
 
-    def expand(self):
-        return bracex.expand(self._expr)
+    # TODO with paths??
+    def expand(self, paths: Iterable[str] | None = None):
+        if paths is not None:
+            raise NotImplementedError("TODO")
+
+        match self._expr:
+            case str():
+                return bracex.expand(self._expr, limit=0)
+            case _ if isinstance(self._expr, (Sequence, numpy.ndarray)):
+                # TODO
+                return numpy.reshape(
+                    [bracex.expand(expr, limit=0) for expr in numpy.reshape(self._expr, -1)],
+                    -1,
+                )
+            
+        raise ValueError("TODO")
 
 
-PathExpressionLike = PathExpression | str | Sequence[str] | numpy.ndarray[str]
+# TODO
+PathExpressionLike = PathExpression | str | Sequence[str] | numpy.typing.ArrayLike # | EllipsisType
 
 
 def is_path_expression_like(expr: PathExpressionLike | Any):

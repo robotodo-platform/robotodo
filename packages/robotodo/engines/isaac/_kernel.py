@@ -17,7 +17,7 @@ class Kernel:
         extra_argv: list[str] = [],
         # TODO
         kit_path: str | None = None, 
-        loop: asyncio.AbstractEventLoop = None,
+        loop: asyncio.AbstractEventLoop | None = None,
     ):
         """
         Create an Isaac Sim "kernel".
@@ -58,17 +58,17 @@ class Kernel:
 
         """
 
-        # NOTE this ensures a loop is present beforehand 
-        # to prevent isaacsim from "stealing" the default loop
-        self._loop = loop
-        if self._loop is None:
+        if loop is None:
             try:
-                self._loop = asyncio.get_running_loop()
+                # NOTE this ensures a loop is present beforehand 
+                # to prevent isaacsim from "stealing" the default loop                
+                loop = asyncio.get_running_loop()
             except Exception as error:
                 raise RuntimeError(
                     "Failed to get running asyncio loop. "
                     "Start one with `asyncio.new_event_loop()`"
                 ) from error
+        self._loop = loop
 
         nest_asyncio.apply()
 
@@ -153,6 +153,11 @@ class Kernel:
                 "--/log/file=",
                 "--/log/outputStreamLevel=Error",
                 "--/log/async=true",
+                # TODO NOTE ensure rendering syncd with .step
+                "--/app/asyncRendering=false",
+                # TODO NOTE make users reset manually??
+                # TODO https://docs.omniverse.nvidia.com/kit/docs/omni_physics/108.0/dev_guide/settings.html#_CPPv419kSettingResetOnStop
+                # "--/physics/resetOnStop=false",
                 # NOTE required for GUI and MUST be enabled during startup (NOT later!!)
                 # "isaacsim.exp.*" extensions seem to rely on this for `.update` to work
                 "--enable", "omni.kit.loop-isaac",
@@ -199,15 +204,21 @@ class Kernel:
         self.enable_extension("omni.usd.libs")
         return __import__("pxr")
     
+    @property
+    def loop(self):
+        return self._loop
+    
     def start_app_loop_soon(self):
         def f():
             if not self._should_run_app_loop:
                 return
-            self._app_framework.update()
-            self._loop.call_soon(f)
+            try:
+                self._app_framework.update()
+            finally:
+                self._loop.call_soon_threadsafe(f)
         
         self._should_run_app_loop = True
-        self._loop.call_soon(f)
+        self._loop.call_soon_threadsafe(f)
 
     def stop_app_loop_soon(self):
         self._should_run_app_loop = False
@@ -217,7 +228,7 @@ class Kernel:
             if not self._should_run_app_loop:
                 return
             self._app_framework.update()
-        self._loop.call_soon(f)
+        self._loop.call_soon_threadsafe(f)
         
     def step_app_loop(self):
         self._app_framework.update()
@@ -270,12 +281,12 @@ def enable_physx_deformable_beta(kernel: Kernel):
 
 # TODO
 import functools
-from typing import TypedDict, Optional, Unpack
+from typing import TypedDict, NotRequired, Unpack
 
 
 class KernelConfig(TypedDict):
-    extra_argv: Optional[list[str]]
-    kit_path: Optional[str]
+    kit_path: NotRequired[str]
+    extra_argv: NotRequired[list[str]]
 
 
 __kernel_config_default = KernelConfig(

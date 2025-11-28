@@ -18,13 +18,18 @@ dependencies = [
     # TODO
     "einops",
     "scipy",
-
+    # TODO utils
+    "numpy",
     # TODO tensorspecs
     "jax",
     "jaxtyping",
 ]
 
+# TODO refactor once we move the submodules into packages!!!!!
 [project.optional-dependencies]
+easy = [
+    "robotodo[engines_isaac,algos_motion_planning]",
+]
 engines_isaac = [
     # TODO 
     "torch",
@@ -54,7 +59,10 @@ algos_motion_planning = [
     # TODO
     # TODO cc1plus error: conda install -c conda-forge cxx-compiler
     "ninja", # NOTE required for jit compilation of curobo torch exts
-    "nvidia_curobo @ git+https://github.com/NVlabs/curobo.git@v0.7.7",
+    # "nvidia_curobo @ git+https://github.com/NVlabs/curobo.git@v0.7.7",
+    # TODO
+    "nvidia_curobo @ git+https://github.com/robotodo-platform/curobo.git@b5d80db",
+    "morphitx @ git+https://github.com/robotodo-platform/morphitx.git@8faa500",
 ]
 test = [
     "pytest", 

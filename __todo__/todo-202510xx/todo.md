@@ -1,4 +1,12 @@
+- ux: camera:
+    - near, far for clipping range: https://openusd.org/dev/api/class_usd_geom_camera.html#acef48b476b648999849b0e5efe47fb44
 
+- ux: 
+    - `defer_changes`
+- doc: usd cam convention:
+    - https://github.com/PixarAnimationStudios/OpenUSD/blob/9f6115dd3fa516a252ab6d91056a083c7d4cc38a/pxr/base/gf/matrix4d.cpp#L807
+    - https://docs.isaacsim.omniverse.nvidia.com/5.1.0/reference_material/reference_conventions.html#usd-axes
+    - https://docs.omniverse.nvidia.com/dev-guide/latest/programmer_ref/viewport/camera.html#look-at-a-prim
 
 - ux: curobo:
     https://github.com/NVlabs/curobo/blob/ebb71702f3f70e767f40fd8e050674af0288abe8/src/curobo/cuda_robot_model/cuda_robot_generator.py#L319
@@ -22,12 +30,18 @@
     - `RigidBody.apply(<Entity>)`
     - `DeformableBody.apply(<Entity>)`
 
+- ux: sensor
+    - `camera.stream.to("/some/place.mp4")`
+    - `microphone.stream.to("/some/place.mp3")`
+
 - ux: stage unit consistency:
     ```
     UsdGeom.GetStageMetersPerUnit(stage)
     ```
 
-- bug: deformable usdgeom.tetmesh: FIX: https://github.com/isaac-sim/IsaacSim/issues/277#issuecomment-3471138590
+- bug: deformable usdgeom.tetmesh: 
+    - `--/app/useFabricSceneDelegate=false`
+    - FIX: https://github.com/isaac-sim/IsaacSim/issues/277#issuecomment-3471138590
 
 
 - articulation: joints, links api
@@ -51,7 +65,7 @@ async with ChangeBlock():
 - ux: Camera.viewer()
 
 
-- bug: omni.physics.tensors xform requires step
+- bug: omni.physics.tensors xform requires step? or maybe just xforms under articulation??
     https://github.com/isaac-sim/IsaacSim/issues/223#issuecomment-3393260151
 - perf: isaac: 
     - doc: profiling: 
