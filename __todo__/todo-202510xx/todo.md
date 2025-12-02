@@ -46,8 +46,6 @@
 
 - articulation: joints, links api
     - curobo motion planning
-- entity: attachment (obj moves along?)
-    - attach entity: use parenting
 
 - articulation: urdf importer -> articulation api -> usd
     - detail: handle "package://": parent until package.xml is found

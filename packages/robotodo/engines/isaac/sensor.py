@@ -23,7 +23,7 @@ from robotodo.engines.isaac.entity import Entity
 from robotodo.engines.isaac._utils.usd import (
     USDPrimRef,
     is_usd_prim_ref,
-    USDXformHelper,
+    USDXformView,
     USDPrimPathExpressionRef,
 )
 # from robotodo.engines.isaac._utils.image import untile_image
@@ -189,8 +189,8 @@ class Camera(ProtoCamera):
             
     # TODO
     @functools.cached_property
-    def _usd_xform_helper(self):
-        return USDXformHelper(
+    def _usd_xform_view(self):
+        return USDXformView(
             self._usd_prims_ref, 
             kernel=self._scene._kernel,
         )
@@ -208,19 +208,19 @@ class Camera(ProtoCamera):
     
     @property
     def pose(self):
-        return self._usd_xform_helper.pose
+        return self._usd_xform_view.pose
     
     @pose.setter
     def pose(self, value: Pose):
-        self._usd_xform_helper.pose = value
+        self._usd_xform_view.pose = value
 
     @property
     def pose_in_parent(self):
-        return self._usd_xform_helper.pose_in_parent
+        return self._usd_xform_view.pose_in_parent
     
     @pose_in_parent.setter
     def pose_in_parent(self, value: Pose):
-        self._usd_xform_helper.pose_in_parent = value
+        self._usd_xform_view.pose_in_parent = value
     
 
     # # TODO NOTE usd uses diff coords for cams: impl in __usd_prim_helper instead??

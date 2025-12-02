@@ -88,6 +88,9 @@ def usd_load_stage(
     kernel.import_module("pxr.Usd")
     kernel.import_module("pxr.UsdGeom")
 
+    # TODO NOTE this allows remote urls to work?
+    kernel.enable_extension("omni.usd_resolver")
+
     if as_sublayer:
         stage = pxr.Usd.Stage.CreateInMemory()
         # TODO customizable!!!  also necesito???
@@ -134,6 +137,8 @@ def usd_add_reference(
     # TODO
     kernel.enable_extension("omni.usd")
     kernel.enable_extension("omni.usd.metrics.assembler")
+    # TODO NOTE this allows remote urls to work?
+    kernel.enable_extension("omni.usd_resolver")
 
     sdf_layer = pxr.Sdf.Layer.FindOrOpen(resource)
     if not sdf_layer:
@@ -144,6 +149,11 @@ def usd_add_reference(
         stage.GetRootLayer().identifier, sdf_layer.identifier, stage_id,
     )
     should_use_add_reference_command = ret_val["ret_val"] != 0
+    if not should_use_add_reference_command:
+        # TODO
+        warnings.warn(f"TODO: {stage} {sdf_layer}")
+    # TODO 
+    should_use_add_reference_command = True
 
     prims = []
 
@@ -182,169 +192,6 @@ def usd_add_reference(
     return prims
 
 
-# TODO rm
-def _legacy_usd_import_urdf(
-    stage: "pxr.Usd.Stage",
-    path: str,
-    resource_or_model: str,
-    kernel: Kernel,
-) -> "pxr.Usd.Prim":
-    
-    omni = kernel.omni
-    isaacsim = kernel.isaacsim
-    # TODO
-    kernel.enable_extension("omni.kit.commands")
-    kernel.enable_extension("omni.usd")
-    kernel.enable_extension("isaacsim.asset.importer.urdf")
-    kernel.enable_extension("isaacsim.core.utils")
-
-    import_config = isaacsim.asset.importer.urdf._urdf.ImportConfig()
-    import_config.make_default_prim = False  # Make the robot the default prim in the scene
-    # import_config.fix_base = config.get("fix_root_link", False) # Fix the base of the robot to the ground
-    import_config.merge_fixed_joints = False
-    # import_config.convex_decomp = False  # Disable convex decomposition for simplicity
-    # import_config.self_collision = False  # Disable self-collision for performance
-
-    # TODO
-    match resource_or_model:
-        case str() as resource:
-            pass
-        case _:
-            raise NotImplementedError(f"TODO {resource_or_model}")
-
-    # TODO use interface
-    is_success, robot_model = omni.kit.commands.execute(
-        "URDFParseFile",
-        # TODO
-        urdf_path=resource,
-        import_config=import_config,
-    )
-    assert is_success
-
-    prim_path = path
-
-    stage_context = omni.usd.get_context_from_stage(stage)
-    if stage_context is None:
-        warnings.warn(
-            f"Failed to acquire context from the USD stage. "
-            f"Stage: {stage}"
-        )
-    else:
-        if not stage_context.is_writable():
-            warnings.warn(
-                f"The USD stage does not appear to be writable. Crash may result! "
-                f"Stage: {stage}"
-            )
-    
-    # TODO
-    # import os
-    # import tempfile
-    # with tempfile.TemporaryDirectory() as tmpdir:
-    #     root_path, filename = os.path.split(os.path.abspath(resource))
-    #     # TODO find free
-    #     robot_model.name = omni.usd.get_stage_next_free_path(
-    #         stage, 
-    #         # TODO behavior should be similar to dir??
-    #         path="/tmp",
-    #         prepend_default_prim=False,
-    #     ).strip("/")
-    #     urdf_interface = isaacsim.asset.importer.urdf._urdf.acquire_urdf_interface()
-    #     prim_path_temp = urdf_interface.import_robot(
-    #         assetRoot=root_path,
-    #         assetName=filename,
-    #         robot=robot_model,
-    #         importConfig=import_config,
-    #         # TODO this doesnt do anything AT ALL!!!! still the opened stage!!!
-    #         # stage=stage.GetEditTarget().GetLayer().identifier,
-    #         stage=os.path.join(tmpdir, "robot.usd"),
-    #     )
-    #     pxr = scene._kernel.pxr
-    #     sub_layer = pxr.Sdf.Layer.CreateAnonymous()
-    #     sub_layer.TransferContent(
-    #         pxr.Sdf.Layer.FindOrOpen(os.path.join(tmpdir, "robot.usd")),
-    #     )
-    #     stage.GetRootLayer().subLayerPaths.append(sub_layer.identifier)
-
-    @contextlib.contextmanager
-    def _undo_unnecessary_stage_changes():
-        default_prim_orig = stage.GetDefaultPrim()
-        yield
-        stage.SetDefaultPrim(default_prim_orig)
-
-    urdf_interface = isaacsim.asset.importer.urdf._urdf.acquire_urdf_interface()
-    # FIXME BUG:default-prim: 
-    # for some reason when the stage identifier is passed, 
-    # `import_config.make_default_prim` is always `True`!
-    # seealso: https://github.com/isaac-sim/IsaacSim/blob/21bbdbad07ba31687f2ff71f414e9d21a08e16b8/source/extensions/isaacsim.asset.importer.urdf/plugins/isaacsim.asset.importer.urdf/PluginInterface.cpp#L297
-    # FIXME BUG:write-stage: 
-    # this also attempts to output the converted assets to `/configuration` which isn't valid 
-    # when the identifier is a non-fs path!!
-    with _undo_unnecessary_stage_changes():
-        prim_path_temp = urdf_interface.import_robot(
-            assetRoot="",
-            assetName="",
-            robot=robot_model,
-            importConfig=import_config,
-            # TODO this doesnt do anything AT ALL!!!! still the opened stage!!!
-            # stage=stage.GetEditTarget().GetLayer().identifier,
-        )
-
-    # TODO rm?
-    # is_success, prim_path_temp = omni.kit.commands.execute(
-    #     "URDFImportRobot",
-    #     urdf_robot=robot_model,
-    #     import_config=import_config,
-    #     # get_articulation_root=True,
-    #     # TODO
-    #     dest_path=scene._usd_current_stage.GetEditTarget().GetLayer().identifier,
-    # )
-    # assert is_success
-
-    # TODO stage
-    if prim_path is None:
-        prim_path = prim_path_temp
-    else:
-        omni.usd.commands.DeletePrimsCommand(
-            paths=[prim_path],
-            stage=stage,
-        ).do()
-
-        # TODO FIXME: this also requires an active stage context??
-        omni.usd.commands.MovePrimCommand(
-            path_from=prim_path_temp,
-            path_to=prim_path,
-            stage_or_context=stage,
-            keep_world_transform=False,
-        ).do()
-
-        # TODO rm
-        # is_success, _ = omni.kit.commands.execute(
-        #     "MovePrim",
-        #     path_from=prim_path_temp,
-        #     path_to=prim_path,
-        #     stage_or_context=stage,
-        # )
-        # assert is_success        
-
-    # TODO
-    # TODO use this instead of get_articulation_root??
-    """
-    from isaacsim.core.utils.prims import (
-        get_articulation_root_api_prim_path,
-        get_prim_at_path,
-        get_prim_parent,
-        get_prim_property,
-        set_prim_property,
-    )
-    """
-
-    # TODO
-    return stage.GetPrimAtPath(
-        kernel.isaacsim.core.utils.prims.get_articulation_root_api_prim_path(prim_path)
-    )
-
-
-
 import os
 import tempfile
 
@@ -356,8 +203,8 @@ def usd_import_urdf(
     kernel: Kernel,
 ):
     pxr = kernel.pxr
-    isaacsim = kernel.isaacsim
     kernel.enable_extension("isaacsim.asset.importer.urdf")
+    isaacsim = kernel.import_module("isaacsim.asset.importer.urdf")
 
     with tempfile.TemporaryDirectory() as tmpdir:
         usd_path = os.path.join(tmpdir, "todo.usd")
@@ -420,7 +267,7 @@ def is_usd_prim_ref(ref: USDPrimRef | Any):
 
 
 class USDStageRef(Protocol):
-    def __call__(self) -> list["pxr.Usd.Stage"]:
+    def __call__(self) -> "pxr.Usd.Stage":
         ...
 
 
@@ -479,7 +326,7 @@ class USDPrimPathExpressionRef(USDPrimRef):
 
 
 # TODO FIXME: matrices in USD are NOT in col-major!!!
-class USDXformHelper:
+class USDXformView:
     __slots__ = ["_prims_ref", "_kernel"]
 
     def __init__(self, ref: USDPrimRef, kernel: Kernel):

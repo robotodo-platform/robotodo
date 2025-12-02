@@ -21,7 +21,7 @@ from robotodo.engines.isaac._kernel import Kernel
 from robotodo.engines.isaac._utils.usd import (
     USDPrimRef, 
     USDPrimPathExpressionRef, 
-    USDXformHelper,
+    USDXformView,
     is_usd_prim_ref,
     usd_compute_geometry,
     usd_physics_make_rigid,
@@ -243,8 +243,8 @@ class Body(ProtoBody):
 
     # TODO
     @functools.cached_property
-    def _usd_xform_helper(self):
-        return USDXformHelper(
+    def _usd_xform_view(self):
+        return USDXformView(
             self._usd_prim_ref, 
             kernel=self._scene._kernel,
         )
@@ -280,19 +280,19 @@ class Body(ProtoBody):
 
     @property
     def pose(self):
-        return self._usd_xform_helper.pose
+        return self._usd_xform_view.pose
     
     @pose.setter
     def pose(self, value: Pose):
-        self._usd_xform_helper.pose = value
+        self._usd_xform_view.pose = value
 
     @property
     def pose_in_parent(self):
-        return self._usd_xform_helper.pose_in_parent
+        return self._usd_xform_view.pose_in_parent
     
     @pose_in_parent.setter
     def pose_in_parent(self, value: Pose):
-        self._usd_xform_helper.pose_in_parent = value
+        self._usd_xform_view.pose_in_parent = value
 
     # TODO
     @functools.cached_property

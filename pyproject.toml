@@ -35,7 +35,11 @@ engines_isaac = [
     "torch",
     # TODO
     "nest_asyncio",
-    "isaacsim[all,extscache]>=5.0.0,<=6.0.0",
+    # TODO rm??
+    #"isaacsim[all,extscache]>=5.0.0,<6.0.0",
+    "isaacsim-core>=5.0.0,<6.0.0",
+    # TODO
+    #"omniverse-kit>=107.0.0,<110.0.0",
     "warp-lang",
 ]
 algos_pi0 = [

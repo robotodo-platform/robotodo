@@ -17,6 +17,9 @@ from robotodo.engines.isaac._utils.usd import (
     usd_create_stage, 
     usd_load_stage,
 )
+from robotodo.engines.isaac._utils.ui import (
+    omni_enable_editing_experience,
+)
 
 
 # TODO
@@ -141,8 +144,9 @@ class Scene(ProtoScene):
             stage = self._usd_stage_ref()
             stage.Save()
             stage.SaveSessionLayers()
-        # TODO
-        raise NotImplementedError("TODO")
+        else:
+            # TODO
+            raise NotImplementedError("TODO")
 
     # TODO rm?
     @property
@@ -257,8 +261,9 @@ class Scene(ProtoScene):
 
     # TODO stage !!!!
     def copy(self, path: PathExpressionLike, target_path: PathExpressionLike):
-        isaacsim = self._kernel.isaacsim
         self._kernel.enable_extension("isaacsim.core.cloner")
+        self._kernel.import_module("isaacsim.core.cloner")
+        isaacsim = self._kernel.import_module("isaacsim")
 
         path = PathExpression(path)
         target_path = PathExpression(target_path)
@@ -394,6 +399,30 @@ class SceneViewer:
 
     # TODO
     @property
+    def mode(self):
+        settings = self._scene._kernel.get_settings()
+        match settings.get("/app/window/hideUi"):
+            case True:
+                return "viewing"
+            case False:
+                return "editing"
+            
+    @mode.setter
+    def mode(self, value: ...):
+        settings = self._scene._kernel.get_settings()
+        match value:
+            case "viewing":
+                settings.set("/app/window/hideUi", True)
+            case "editing":
+                # TODO
+                omni_enable_editing_experience(kernel=self._scene._kernel)
+                settings.set("/app/window/hideUi", False)
+                # TODO start editing extension
+            case _:
+                raise ValueError(f"TODO")
+
+    # TODO
+    @property
     def selected_entity(self):
         from robotodo.engines.isaac.entity import Entity
 
@@ -418,9 +447,13 @@ class SceneViewer:
     @property
     def _isaac_debug_draw_interface(self):
         # TODO
-        self._scene._kernel.enable_extension("isaacsim.util.debug_draw")
+        kernel = self._scene._kernel
+        kernel.enable_extension("isaacsim.util.debug_draw")
+        kernel.import_module("isaacsim.util.debug_draw")
+        isaacsim = kernel.import_module("isaacsim")
+
         return (
-            self._scene._kernel.isaacsim.util.debug_draw._debug_draw
+            isaacsim.util.debug_draw._debug_draw
             .acquire_debug_draw_interface()
         )
     

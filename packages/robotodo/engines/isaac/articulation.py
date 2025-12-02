@@ -38,8 +38,8 @@ from robotodo.engines.isaac._utils.usd import (
     USDPrimPathExpressionRef,
     usd_physx_query_articulation_properties,
     usd_import_urdf,
+    USDXformView,
 )
-
 
 class Joint(ProtoJoint):
     # __slots__ = ["_usd_prim_ref", "_scene"]
@@ -483,11 +483,29 @@ class Articulation(ProtoArticulation):
             self._usd_articulation_root_prims,
             kernel=self._scene._kernel,
         )
-            
-    # TODO clarify UsdPhysicsArticulationRootAPI
+
+    # TODO
+    @functools.cached_property
+    def _usd_xform_view(self):
+        return USDXformView(
+            self._usd_prim_ref, 
+            kernel=self._scene._kernel,
+        )
+
     @property
     def path(self):
-        return self._isaac_physics_articulation_view.prim_paths
+        return [
+            prim.GetPath().pathString
+            if prim else
+            None
+            for prim in self._usd_prim_ref()
+        ]
+
+    # TODO rm
+    # TODO clarify UsdPhysicsArticulationRootAPI
+    # @property
+    # def path(self):
+    #     return self._isaac_physics_articulation_view.prim_paths
 
     @property
     def scene(self):
@@ -519,23 +537,39 @@ class Articulation(ProtoArticulation):
 
     @property
     def pose(self):
-        view = self._isaac_physics_articulation_view
-        root_trans = view.get_root_transforms()
-        return Pose(
-            p=root_trans[..., [0, 1, 2]],
-            q=root_trans[..., [3, 4, 5, 6]],
-        )
-    
+        return self._usd_xform_view.pose
+
     @pose.setter
     def pose(self, value: Pose):
-        view = self._isaac_physics_articulation_view
-        value_ = torch.broadcast_to(
-            torch.concat((torch.asarray(value.p), torch.asarray(value.q)), dim=-1), 
-            size=(view.count, 7),
-        )
-        view.set_root_transforms(value_, indices=torch.arange(view.count))
-        # TODO
-        # self._scene._isaac_physics_tensor_ensure_sync()
+        self._usd_xform_view.pose = value
+
+    @property
+    def pose_in_parent(self):
+        return self._usd_xform_view.pose_in_parent
+    
+    @pose_in_parent.setter
+    def pose_in_parent(self, value: Pose):
+        self._usd_xform_view.pose_in_parent = value
+
+    # @property
+    # def pose(self):
+    #     view = self._isaac_physics_articulation_view
+    #     root_trans = view.get_root_transforms()
+    #     return Pose(
+    #         p=root_trans[..., [0, 1, 2]],
+    #         q=root_trans[..., [3, 4, 5, 6]],
+    #     )
+    
+    # @pose.setter
+    # def pose(self, value: Pose):
+    #     view = self._isaac_physics_articulation_view
+    #     value_ = torch.broadcast_to(
+    #         torch.concat((torch.asarray(value.p), torch.asarray(value.q)), dim=-1), 
+    #         size=(view.count, 7),
+    #     )
+    #     view.set_root_transforms(value_, indices=torch.arange(view.count))
+    #     # TODO
+    #     # self._scene._isaac_physics_tensor_ensure_sync()
 
     @property
     def joints(self):
@@ -928,7 +962,7 @@ class ArticulationPlanner:
     def compute_action(
         self, 
         observation: TensorTableLike[observation_spec],
-    ) -> TensorTableLike[action_spec] | ArticulationAction:
+    ) -> "TensorTableLike[action_spec] | ArticulationAction":
         
         dof_positions = observation.get("dof_positions", None)
         if dof_positions is None:
