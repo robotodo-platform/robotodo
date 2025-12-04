@@ -1,5 +1,5 @@
-# robotodo
-robo-todo, roboto-do
+# robotodo-isaac
+Robotodo NVIDIA Omniverse simulation engine
 
 ## Installation
 
@@ -9,7 +9,7 @@ Robotodo may be installed from:
     Effort to publish to [PyPI](https://pypi.org) is underway.
 - Source:
     ```sh
-    pip install robotodo @ git+{url}
+    pip install robotodo-isaac @ git+{url}
     ```
     Replace `{url}` with the Git URL of the repository.
     ([Details](https://pip.pypa.io/en/stable/cli/pip_install/#examples.))

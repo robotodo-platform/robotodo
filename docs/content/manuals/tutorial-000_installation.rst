@@ -29,11 +29,11 @@ Before you begin, complete the following check list:
 Getting Started
 ---------------
 
-The easiest way to install ``robotodo`` is through ``pip``:
+The easiest way to install ``robotodo-isaac`` is through ``pip``:
 
 .. code-block:: shell
 
-  python3 -m pip install 'robotodo[easy] @ git+https://github.com/robotodo-platform/robotodo.git'
+  python3 -m pip install 'robotodo-isaac @ git+https://github.com/robotodo-platform/robotodo-isaac.git'
 
 
 .. note:: 

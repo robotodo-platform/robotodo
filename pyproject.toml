@@ -6,31 +6,14 @@ requires = [
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "robotodo"
+name = "robotodo-isaac"
 dynamic = ["version"]
 requires-python = ">=3.11"
 readme = "README.md"
 license = "Apache-2.0"
 dependencies = [
     # TODO
-    "bracex",
-    "wcmatch",
-    # TODO
-    "einops",
-    "scipy",
-    # TODO utils
-    "numpy",
-    # TODO tensorspecs
-    "jax",
-    "jaxtyping",
-]
-
-# TODO refactor once we move the submodules into packages!!!!!
-[project.optional-dependencies]
-easy = [
-    "robotodo[engines_isaac,algos_motion_planning]",
-]
-engines_isaac = [
+    "robotodo-core @ git+https://github.com/robotodo-platform/robotodo-core.git@221acd1",
     # TODO 
     "torch",
     "numpy",
@@ -46,26 +29,9 @@ engines_isaac = [
     # TODO NOTE omniverse-kit 107.3.3 required by some isaacsim exts is missing from PyPI
     #"omniverse-kit>=107.0.0,<110.0.0",
     "isaacsim-kernel>=5.0.0,<6.0.0",
-]
-algos_pi0 = [
-    # TODO mv pi0
-    "jax",
-    "jaxtyping",
-    "optax",
-    "einops",
-    "flax!=0.11,<0.13.0",
-    "fsspec[gcs]>=2024.6.0",
-    "orbax-checkpoint>=0.11.13",
-    "sentencepiece",
-    "platformdirs",
-]
-algos_pi0_test = [
-    "openpi-client @ git+https://github.com/Physical-Intelligence/openpi.git#subdirectory=packages/openpi-client",
-    "openpi @ git+https://github.com/Physical-Intelligence/openpi.git",
-    "pytest",
-]
-algos_motion_planning = [    
     # TODO
+    # TODO make optional??
+    # TODO this is only required by algos.motion_planning
     # TODO cc1plus error: conda install -c conda-forge cxx-compiler
     "ninja", # NOTE required for jit compilation of curobo torch exts
     # "nvidia_curobo @ git+https://github.com/NVlabs/curobo.git@v0.7.7",
@@ -73,6 +39,8 @@ algos_motion_planning = [
     "nvidia_curobo @ git+https://github.com/robotodo-platform/curobo.git@b5d80db",
     "morphitx @ git+https://github.com/robotodo-platform/morphitx.git@8faa500",
 ]
+
+[project.optional-dependencies]
 test = [
     "pytest", 
 ]

@@ -5,6 +5,4 @@ API
    :toctree: _autosummary
    :recursive:
    
-   robotodo.algos
-   robotodo.engines
-   robotodo.utils
+   robotodo.engines.isaac
