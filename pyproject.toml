@@ -36,7 +36,7 @@ dependencies = [
     "ninja", # NOTE required for jit compilation of curobo torch exts
     # "nvidia_curobo @ git+https://github.com/NVlabs/curobo.git@v0.7.7",
     # TODO
-    "nvidia_curobo @ git+https://github.com/robotodo-platform/curobo.git@b5d80db",
+    "nvidia_curobo @ git+https://github.com/robotodo-platform/curobo.git@7563d30",
     "morphitx @ git+https://github.com/robotodo-platform/morphitx.git@8faa500",
 ]
 

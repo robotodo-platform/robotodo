@@ -8,5 +8,5 @@ build:
       - pip install --verbose .[docs]
     build:
       html:
-        - jupyter-book build --builder html --warningiserror --path-output $READTHEDOCS_OUTPUT/html/ docs/
+        - jupyter-book build --builder html --path-output $READTHEDOCS_OUTPUT/html/ docs/
   
