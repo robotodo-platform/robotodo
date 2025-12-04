@@ -5,11 +5,9 @@ build:
     python: "3.11"
   jobs:
     install:
-      - pip install --verbose .[docs]
-    pre_build:
-      - jupyter-book config sphinx docs/
-
-sphinx:
-  configuration: docs/conf.py
-  builder: html
-  fail_on_warning: false
+      - pip install .[docs]
+    build:
+      html:
+        - jupyter-book build --builder html docs/
+        - mkdir -p $READTHEDOCS_OUTPUT/html
+        - cp --recursive --no-target-directory docs/_build/html $READTHEDOCS_OUTPUT/html
