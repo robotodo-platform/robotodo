@@ -1,5 +1,5 @@
-from robotodo.controllers.pi0 import Pi0Controller
-from robotodo.controllers.pi0.nn.pi0 import Pi0
+from robotodo.algos.pi0 import Pi0Controller
+from robotodo.algos.pi0.nn.pi0 import Pi0
 
 
 class TestPi0Controller:

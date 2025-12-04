@@ -4,7 +4,7 @@ import trimesh
 import trimesh.transformations as tra
 
 from robotodo.utils.pose import Pose
-from robotodo.utils.geometry import TriangularMesh, PolygonMesh
+from robotodo.utils.geometry import PolygonMesh
 
 
 # TODO perf
@@ -244,21 +244,10 @@ class AntipodalPoseSampler:
         self._config = self.Config(config, **config_kwds)
 
     # TODO !!!!!
-    def sample(self, mesh: PolygonMesh | TriangularMesh) -> Pose:
+    def sample(self, mesh: PolygonMesh) -> Pose:
         match mesh:
             case PolygonMesh():
-                todo = mesh.to_triangular()
-                return Pose.from_matrix(
-                    sample_antipodal(
-                        trimesh.Trimesh(
-                            vertices=todo.vertices,
-                            faces=todo.face_vertex_indices,
-                        ),
-                        **self._config,
-                    )
-                )
-            case TriangularMesh():
-                todo = mesh
+                todo = mesh.triangulate()
                 return Pose.from_matrix(
                     sample_antipodal(
                         trimesh.Trimesh(

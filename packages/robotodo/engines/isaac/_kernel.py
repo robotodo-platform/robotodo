@@ -123,6 +123,7 @@ class Kernel:
                 #
                 "--/app/name=robotodo.engines.isaac",
                 # 
+                "--allow-root",
                 "--/app/installSignalHandlers=false",
                 "--/app/python/interceptSysStdOutput=false",
                 "--/app/python/interceptSysExit=false",
@@ -137,9 +138,12 @@ class Kernel:
                 "--enable", "omni.physics.physx",
                 "--enable", "omni.physics.stageupdate",
                 "--enable", "omni.physx.tensors",
-                "--enable", "omni.hydra.rtx",
+                # "--enable", "omni.hydra.rtx",
+                # "--enable", "omni.hydra.pxr",
                 "--enable", "omni.replicator.core",
                 "--enable", "omni.kit.manipulator.camera", # NOTE prevent error messages when missing
+                # TODO HACK right now this just keeps the GUI layout working
+                "--enable", "isaacsim.asset.importer.urdf",
                 # optional ux improvement
                 "--portable", # run as portable to prevent writing extra files to user directory
                 "--/app/window/hideUi=true", # TODO

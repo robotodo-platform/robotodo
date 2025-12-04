@@ -15,6 +15,7 @@ def omni_enable_editing_experience(kernel: Kernel):
         "omni.kit.manipulator.prim",
         "omni.kit.manipulator.selection",
         "omni.kit.material.library",
+        # TODO
         "omni.kit.menu.common",
         "omni.kit.menu.create",
         "omni.kit.menu.stage",
@@ -175,16 +176,17 @@ def omni_enable_editing_experience(kernel: Kernel):
                                     "visible": True,
                                     "width": 1866.666748046875,
                                 },
-                                # {
-                                #     "dock_id": 4,
-                                #     "height": 554.6666870117188,
-                                #     "position_x": 0.0,
-                                #     "position_y": 22.666667938232422,
-                                #     "selected_in_dock": False,
-                                #     "title": "Robotics Examples",
-                                #     "visible": True,
-                                #     "width": 1866.666748046875,
-                                # },
+                                # TODO
+                                {
+                                    "dock_id": 4,
+                                    "height": 554.6666870117188,
+                                    "position_x": 0.0,
+                                    "position_y": 22.666667938232422,
+                                    "selected_in_dock": False,
+                                    "title": "Robotics Examples",
+                                    "visible": True,
+                                    "width": 1866.666748046875,
+                                },
                                 {
                                     "dock_id": 4,
                                     "height": 554.6666870117188,
@@ -229,16 +231,17 @@ def omni_enable_editing_experience(kernel: Kernel):
                                     "visible": True,
                                     "width": 692.0,
                                 },
-                                # {
-                                #     "dock_id": 7,
-                                #     "height": 655.3333740234375,
-                                #     "position_x": 1868.0,
-                                #     "position_y": 22.666667938232422,
-                                #     "selected_in_dock": False,
-                                #     "title": "Render Settings",
-                                #     "visible": True,
-                                #     "width": 692.0,
-                                # },
+                                # TODO
+                                {
+                                    "dock_id": 7,
+                                    "height": 655.3333740234375,
+                                    "position_x": 1868.0,
+                                    "position_y": 22.666667938232422,
+                                    "selected_in_dock": False,
+                                    "title": "Render Settings",
+                                    "visible": True,
+                                    "width": 692.0,
+                                },
                             ],
                             "dock_id": 7,
                             "position": "TOP",
@@ -273,6 +276,12 @@ def omni_enable_editing_experience(kernel: Kernel):
     omni = kernel.omni
     kernel.enable_extension("omni.ui")
     kernel.import_module("omni.ui")
+    kernel.enable_extension("omni.kit.mainwindow")
+    kernel.import_module("omni.kit.mainwindow")
+
+    main_window = omni.kit.mainwindow.get_main_window()
+    main_menu_bar = main_window.get_main_menu_bar()
+    main_menu_bar.visible = True
 
     omni.ui.Workspace.restore_workspace(
         workspace_dump=workspace_layout,
