@@ -35,9 +35,12 @@ The easiest way to install ``robotodo-isaac`` is through ``pip``:
 
   python3 -m pip install 'robotodo-isaac @ git+https://github.com/robotodo-platform/robotodo-isaac.git'
 
-
 .. note:: 
   Effort to publish to `PyPI <https://pypi.org>`_ is underway.
+
+.. note::
+  Find alternative ways to install ``robotodo-isaac`` 
+  `here <https://pip.pypa.io/en/stable/cli/pip_install/#examples>`_.
 
 
 References

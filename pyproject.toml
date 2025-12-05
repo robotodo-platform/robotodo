@@ -57,6 +57,10 @@ docs = [
 where = ["packages"]
 namespaces = true
 
+[tool.setuptools_scm]
+version_scheme = "release-branch-semver"
+local_scheme = "no-local-version"
+
 [tool.pytest.ini_options]
 minversion = "6.0"
 testpaths = ["packages"]
