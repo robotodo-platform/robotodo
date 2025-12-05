@@ -382,7 +382,7 @@ class Scene(ProtoScene):
         self._isaac_physics_tensor_view.set_gravity(numpy.broadcast_to(value, shape=3))
 
 
-from typing import TypedDict, Unpack
+from typing import TypedDict, Unpack, Literal
 
 import numpy
 import einops
@@ -399,7 +399,7 @@ class SceneViewer:
 
     # TODO
     @property
-    def mode(self):
+    def mode(self) -> Literal["viewing", "editing"] | None:
         settings = self._scene._kernel.get_settings()
         match settings.get("/app/window/hideUi"):
             case True:

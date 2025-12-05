@@ -115,6 +115,10 @@ def omni_enable_editing_experience(kernel: Kernel):
         "omni.kit.quicklayout",
     ]
 
+    extension_names = [
+        "omni.app.dev",
+    ]
+
     kernel.enable_extensions(extension_names)
 
     workspace_layout = [

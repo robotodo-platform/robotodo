@@ -263,6 +263,13 @@ class Kernel:
     def import_module(self, module: str):
         return __import__(module)
 
+    async def run_forever(self):
+        self.start_app_loop_soon()
+        try: 
+            await asyncio.Event().wait()
+        finally:
+            self.stop_app_loop_soon()
+            self._app.shutdown()
 
 
 # TODO

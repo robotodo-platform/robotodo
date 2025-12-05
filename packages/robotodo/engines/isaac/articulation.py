@@ -900,6 +900,8 @@ from tensorspecs import TensorTableLike, TensorSpec, TensorTableSpec
 # from robotodo.algos.motion_planning.reach import MotionPlanner
 
 
+# TODO impl protoplanner
+# TODO merge with robotodo.algos.motion_planning!!!
 class ArticulationPlanner:
     class Config(TypedDict, total=False):
         base_link: str

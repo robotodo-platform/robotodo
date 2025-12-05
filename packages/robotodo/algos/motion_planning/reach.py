@@ -6,7 +6,7 @@ os.environ.setdefault("CUROBO_TORCH_CUDA_GRAPH_RESET", "1")
 # TODO
 import functools
 import warnings
-from typing import Callable, TypedDict, Unpack, NotRequired
+from typing import Callable, TypedDict, Unpack, NotRequired, Literal
 
 import numpy
 import einops
@@ -70,6 +70,25 @@ def test_array_reduce_single():
     _array_reduce_single(numpy.random.rand(*(2, 3, 4)), shape=(3, 4))
 
 
+# TODO
+def _compute_axis_vector(axis: Axis):
+    axis_vector = numpy.full((*numpy.shape(axis), 3), fill_value=0)
+    # TODO handle Axis.UNKNOWN !!!!!
+    axis_vector[..., axis] = 1
+    axis_vector = axis_vector[..., [Axis.X, Axis.Y, Axis.Z]]
+    return axis_vector
+
+
+# TODO
+def _compute_axis(axis_vector: ...):
+    axis_vector = numpy.asarray(axis_vector)
+    dominant_axis_index = numpy.argmax(numpy.abs(axis_vector))
+    sign = numpy.sign(axis_vector[..., dominant_axis_index])
+    # TODO handle Axis.UNKNOWN !!!!!
+    axis = numpy.asarray([Axis.X, Axis.Y, Axis.Z])[dominant_axis_index]
+    return axis, sign
+
+
 class _CuroboKinematicsParser(CuroboKinematicsParser):
     # TODO rm
     # class Config(TypedDict):
@@ -101,8 +120,8 @@ class _CuroboKinematicsParser(CuroboKinematicsParser):
             # parent_link_name = joint.body0.path[0]
             # child_link_name = joint.body1.path[0]
             parent_link_name = self._robotodo_derive_entity_name(joint.body0)
-            child_link_name = self._robotodo_derive_entity_name(joint.body1)            
-            self._parent_map[child_link_name] = {"parent": parent_link_name}
+            link_name = self._robotodo_derive_entity_name(joint.body1)            
+            self._parent_map[link_name] = {"parent": parent_link_name}
     
     @functools.lru_cache
     def _build_link_geometries(self) -> dict[str, trimesh.Trimesh]:
@@ -152,6 +171,17 @@ class _CuroboKinematicsParser(CuroboKinematicsParser):
             parent_link_name = self._robotodo_derive_entity_name(joint.body0)
             link_name = self._robotodo_derive_entity_name(joint.body1)     
 
+            joint_pose_in_parent_link = joint.pose_in_body0
+            joint_pose_in_link = joint.pose_in_body1
+
+            # TODO this is correct???
+            joint_frame = _array_reduce_single(
+                (joint_pose_in_parent_link * joint_pose_in_link.inv()).to_matrix(),
+                # (joint.pose_in_body1[0].inv() * joint.pose_in_body0[0])
+                shape=(4, 4),
+            )
+            # TODO ensure homogenous
+
             # TODO rm
             # joint_name = joint.path[0]
             joint_name = self._robotodo_derive_entity_name(joint)
@@ -163,63 +193,116 @@ class _CuroboKinematicsParser(CuroboKinematicsParser):
                 case JointKind.FIXED:
                     # TODO
                     joint_type = CuroboJointType.FIXED
+
                 case JointKind.REVOLUTE:
                     # TODO
                     revolute_joint = joint.astype(ProtoRevoluteJoint)
                     # TODO
                     # revolute_joint = RevoluteJoint(joint)
+                    #
+
+                    axis_vector = _compute_axis_vector(revolute_joint.axis)
+                    # TODO upstream pose: better way to get rotation
+                    axis_vector = einops.einsum(
+                        joint_pose_in_link.inv().to_matrix()[..., :3, :3],
+                        axis_vector,
+                        # TODO transpose necesito?
+                        "... xyz_b xyz_a, ... xyz_b -> ... xyz_a",
+                    )
                     # TODO
-                    match _array_reduce_single(revolute_joint.axis, shape=()):
-                        case Axis.X:
-                            joint_type = CuroboJointType.X_ROT
-                        case Axis.Y:
-                            joint_type = CuroboJointType.Y_ROT
-                        case Axis.Z:
-                            joint_type = CuroboJointType.Z_ROT
+                    axis, sign = _compute_axis(axis_vector)
+                    axis = _array_reduce_single(axis, shape=())
+                    sign = _array_reduce_single(sign, shape=())
+
+                    # TODO
+                    match sign:
+                        case 1:
+                            match axis:
+                                case Axis.X:
+                                    joint_type = CuroboJointType.X_ROT
+                                case Axis.Y:
+                                    joint_type = CuroboJointType.Y_ROT
+                                case Axis.Z:
+                                    joint_type = CuroboJointType.Z_ROT
+                                case _:
+                                    # TODO
+                                    raise ValueError(f"TODO: {axis}")
+                        case -1:
+                            match axis:
+                                case Axis.X:
+                                    joint_type = CuroboJointType.X_ROT_NEG
+                                case Axis.Y:
+                                    joint_type = CuroboJointType.Y_ROT_NEG
+                                case Axis.Z:
+                                    joint_type = CuroboJointType.Z_ROT_NEG
+                                case _:
+                                    # TODO
+                                    raise ValueError(f"TODO: {axis}")
                         case _:
-                            # TODO
-                            raise ValueError("TODO")
+                            raise ValueError(f"TODO: {sign}")
+
                     # TODO use common range instead?
                     joint_limits = _array_reduce_single(
                         revolute_joint.position_limit,
                         shape=(2, ),
                     )
+                    # TODO
+                    # joint_limits *= sign
+
                 case JointKind.PRISMATIC:
                     prismatic_joint = joint.astype(ProtoPrismaticJoint)
-                    match _array_reduce_single(prismatic_joint.axis, shape=()):
-                        case Axis.X:
-                            joint_type = CuroboJointType.X_PRISM
-                        case Axis.Y:
-                            joint_type = CuroboJointType.Y_PRISM
-                        case Axis.Z:
-                            joint_type = CuroboJointType.Z_PRISM
-                        case _:
+
+                    axis_vector = _compute_axis_vector(prismatic_joint.axis)
+                    # TODO upstream pose: better way to get rotation
+                    axis_vector = einops.einsum(
+                        joint_pose_in_link.inv().to_matrix()[..., :3, :3],
+                        axis_vector,
+                        # TODO
+                        "... xyz_b xyz_a, ... xyz_b -> ... xyz_a",
+                    )
+                    # TODO
+                    axis, sign = _compute_axis(axis_vector)
+                    axis = _array_reduce_single(axis, shape=())
+                    sign = _array_reduce_single(sign, shape=())
+
+                    # TODO
+                    match sign:
+                        case 1:
+                            match axis:
+                                case Axis.X:
+                                    joint_type = CuroboJointType.X_ROT
+                                case Axis.Y:
+                                    joint_type = CuroboJointType.Y_ROT
+                                case Axis.Z:
+                                    joint_type = CuroboJointType.Z_ROT
+                                case _:
+                                    # TODO
+                                    raise ValueError(f"TODO: {axis}")
+                        case -1:
                             # TODO
-                            raise ValueError("TODO")
+                            match axis:
+                                case Axis.X:
+                                    joint_type = CuroboJointType.X_ROT_NEG
+                                case Axis.Y:
+                                    joint_type = CuroboJointType.Y_ROT_NEG
+                                case Axis.Z:
+                                    joint_type = CuroboJointType.Z_ROT_NEG
+                                case _:
+                                    # TODO
+                                    raise ValueError(f"TODO: {axis}")
+                        case _:
+                            raise ValueError(f"TODO: {sign}")
+                        
                     # TODO use common range instead?
                     joint_limits = _array_reduce_single(
                         prismatic_joint.position_limit,
                         shape=(2, ),
                     )
+                    # TODO
+                    # joint_limits *= sign
                 case _:
                     joint_type = CuroboJointType.FIXED
                     warnings.warn(f"Unsupported joint kind {joint.kind}, planning as fixed: {joint}")
-
-            joint_frame = _array_reduce_single(
-                (joint.pose_in_body0 * joint.pose_in_body1.inv()).to_matrix(),
-                # (joint.pose_in_body1[0].inv() * joint.pose_in_body0[0])
-                shape=(4, 4),
-            )
-            # TODO ensure homogenous
-
-            # import numpy
-            # joint_frame = numpy.linalg.inv(
-            #     joint.pose_in_body1[0].to_matrix()
-            # ) @ joint.pose_in_body0[0].to_matrix()
-
-            # TODO !!!
-            # print("joint origin", joint_name, (joint.pose_in_body1[0].inv() * joint.pose_in_body0[0]))
-            # print("", joint_name, joint_frame)
 
             link_params[link_name] = CuroboLinkParams(
                 link_name=link_name,

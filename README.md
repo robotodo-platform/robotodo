@@ -2,12 +2,14 @@
 Robotodo NVIDIA Omniverse simulation engine.
 
 ## Usage
+Audience: general public.
 
 Refer to the documentation published 
 [here](https://robotodo-isaac.readthedocs.io)
 or the `docs` directory.
 
 ## Development
+Audience: package developers/contributors.
 
 Directory structure:
 - `packages`: Package source code.
