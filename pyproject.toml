@@ -19,15 +19,17 @@ dependencies = [
     "numpy",
     "warp-lang",
     "einops",
-    # TODO
+
+    # omniverse specific dependencies
+    # NOTE omniverse-kit 107.3.3 required by some isaacsim exts is missing from PyPI
+    # "omniverse-kit>=107.0.0,<110.0.0",
+    # "isaacsim[all,extscache]>=5.0.0,<6.0.0",
+    "isaacsim-kernel>=5.0.0,<6.0.0", 
     "nest_asyncio",
-    # TODO rm??
-    #"isaacsim[all,extscache]>=5.0.0,<6.0.0",
-    # TODO NOTE limited to numpy v1 due to omni?
+    # NOTE limited to numpy v1 due to omni?
     "numpy>=1.0.0,<2.0.0",
-    # TODO NOTE omniverse-kit 107.3.3 required by some isaacsim exts is missing from PyPI
-    #"omniverse-kit>=107.0.0,<110.0.0",
-    "isaacsim-kernel>=5.0.0,<6.0.0",
+    "warp-lang>=1.8.0,<1.9.0",
+
     # TODO
     # TODO make optional??
     # TODO this is only required by algos.motion_planning
@@ -43,6 +45,7 @@ dependencies = [
 test = [
     "pytest", 
     "pytest-asyncio", 
+    "pytest-benchmark", 
     "numpy",
 ]
 lint = [

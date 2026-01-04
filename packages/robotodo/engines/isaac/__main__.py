@@ -13,8 +13,7 @@ async def main():
 
     # TODO load from source specified in cli
     scene = Scene.create()
-    scene.viewer.mode = "editing"
-    await scene.viewer.show()
+    await scene.viewer.show(mode="editing")
 
     await asyncio.Future()
 

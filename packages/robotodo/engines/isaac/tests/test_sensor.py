@@ -1,3 +1,5 @@
+import asyncio
+
 import pytest
 import numpy
 
@@ -65,3 +67,21 @@ class TestCamera:
         camera.optics.focus_distance
 
         ...
+
+    # TODO
+    # @pytest.mark.benchmark
+    # @pytest.mark.asyncio(loop_scope="session")
+    # async def test_benchmark_read_rgba(self, benchmark):
+    #     scene = Scene.load(
+    #         "https://omniverse-content-production.s3-us-west-2.amazonaws.com/Assets/Isaac/5.0/Isaac/Environments/Grid/default_environment.usd"
+    #     )
+
+    #     camera = Camera.create("/Camera{0..16}", scene=scene)
+    #     camera.pose = Pose.from_lookat([1, 1, 1], [0, 0, 0])
+
+    #     @benchmark
+    #     def _():
+    #         loop = asyncio.get_running_loop()
+    #         asyncio.run_coroutine_threadsafe(camera.read_rgba(), loop=loop).result()
+
+    #     ...

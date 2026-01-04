@@ -45,34 +45,11 @@ def omni_enable_viewing_experience(kernel: Kernel):
     kernel._omni_enable_extensions(extension_names)
 
     carb.settings.get_settings().set("/app/docks/disabled", False)
-    omni.ui.Workspace.restore_workspace(
-        workspace_dump=workspace_layout,
-        keep_windows_open=False,
-    )
-
-    return
-
-
-    async def _restore_workspace_task():
-        carb.settings.get_settings().set("/app/docks/disabled", False)
-        # await _ensure_window_titles(
-        #     window_titles,
-        #     kernel=kernel,
-        # )
-        # # TODO
-        # print("TODO", window_titles)
-        # TODO
-        # await kernel._app.next_update_async()
+    for _ in range(1):
         omni.ui.Workspace.restore_workspace(
             workspace_dump=workspace_layout,
             keep_windows_open=False,
         )
-
-    # TODO
-    kernel._omni_run_coroutine(_restore_workspace_task())
-    # return kernel._omni_ensure_future(
-    #     _restore_workspace_task()
-    # )
 
 
 
@@ -226,6 +203,7 @@ def omni_enable_editing_experience(kernel: Kernel):
         "omni.kit.viewport.scene_camera_model",
         "omni.kit.viewport.window",
         # TODO
+        "omni.kit.property.physx",
         "omni.usdphysics.ui",
         "omni.simready.explorer",
         # TODO
@@ -406,31 +384,22 @@ def omni_enable_editing_experience(kernel: Kernel):
 
     # TODO
     carb.settings.get_settings().set("/app/docks/disabled", False)
-    omni.ui.Workspace.restore_workspace(
-        workspace_dump=workspace_layout,
-        keep_windows_open=False,
-    )
-
-    return
-
-
-    async def _restore_workspace_task():
-        carb.settings.get_settings().set("/app/docks/disabled", False)
-        # await _ensure_window_titles(
-        #     window_titles,
-        #     kernel=kernel,
-        # )
-        # # TODO
-        # print("TODO", window_titles)
-        # TODO
-        # await kernel._app.next_update_async()
+    for _ in range(2):
         omni.ui.Workspace.restore_workspace(
             workspace_dump=workspace_layout,
             keep_windows_open=False,
         )
 
-    # TODO
-    # kernel._omni_run_coroutine(_restore_workspace_task())
-    return kernel._omni_ensure_future(_restore_workspace_task())
-    # asyncio.get_event_loop().create_task(_restore_workspace_task())
 
+def omni_disable_ui(kernel: Kernel):
+    omni = kernel._omni
+    kernel._omni_enable_extension("omni.ui")
+    kernel._omni_import_module("omni.ui")
+
+    settings = kernel._carb.settings.get_settings()
+    settings.set("/app/window/hideUi", True)
+
+    omni.ui.Workspace.restore_workspace(
+        workspace_dump=[],
+        keep_windows_open=False,
+    )

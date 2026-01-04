@@ -11,7 +11,7 @@ import functools
 from typing import Any, Literal, NamedTuple
 
 # TODO
-import warp
+# import warp
 import torch
 import numpy
 import einops
@@ -314,6 +314,9 @@ class Camera(ProtoCamera):
         # TODO NOTE ensure dim
         if frame_tiled.ndim == 2:
             frame_tiled = frame_tiled.reshape((*frame_tiled.shape, 1))
+
+        # TODO
+        import warp
 
         res = einops.rearrange(
             warp.to_torch(frame_tiled),

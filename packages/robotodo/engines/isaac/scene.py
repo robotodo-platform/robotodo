@@ -31,6 +31,7 @@ from robotodo.engines.isaac._utils.usd import (
 from robotodo.engines.isaac._utils.ui import (
     omni_enable_editing_experience,
     omni_enable_viewing_experience,
+    omni_disable_ui,
 )
 
 
@@ -132,14 +133,19 @@ class Scene(ProtoScene):
     def kernel(self):
         return self._kernel
 
-    def save(self, source: str | None = None):
-        if source is None:
-            stage = self._usd_stage_ref()
-            stage.Save()
-            stage.SaveSessionLayers()
-        else:
-            # TODO
-            raise NotImplementedError("TODO")
+    # TODO buffer
+    def save(self, destination: str | IO | None = None):
+        stage = self._usd_stage_ref()
+        match destination:
+            case str():
+                # TODO
+                # stage.Export()
+                raise NotImplementedError("TODO")
+            case None:
+                stage.Save()
+                stage.SaveSessionLayers()
+            case _:
+                raise NotImplementedError("TODO")
 
     # TODO rm?
     @property
@@ -153,9 +159,25 @@ class Scene(ProtoScene):
 
         usd_context = omni.usd.get_context()
         if usd_context.get_stage() != stage:
-            self._kernel._omni_run_coroutine(
-                usd_context.attach_stage_async(stage),
-            ).result()
+            # TODO rm due to BUG
+            # self._kernel._omni_run_coroutine(
+            #     usd_context.attach_stage_async(stage),
+            # ).result()
+
+            import concurrent.futures
+            future = concurrent.futures.Future()
+            def on_finish_fn(is_success: bool, message: str):
+                if not is_success:
+                    future.set_exception(RuntimeError(message))
+                else:
+                    future.set_result(is_success)
+            # TODO does this require `app.update`?? no??
+            usd_context.attach_stage_with_callback(
+                usd_get_stage_id(stage, kernel=self._kernel), 
+                on_finish_fn=on_finish_fn,
+            )
+            # TODO
+            assert future.result()
 
         return usd_context
     
@@ -365,9 +387,6 @@ class Scene(ProtoScene):
                     asyncio.Event().wait()
                 )
 
-            # TODO ensure kernel stepping: better api??
-            # self._scene._kernel.run_forever()
-
         async def _disable(self):
             timeline = self._scene._omni_timeline
             timeline.set_auto_update(False)
@@ -465,7 +484,6 @@ class Scene(ProtoScene):
     def on_step(self):
         return PhysicsStepAsyncEventStream(scene=self)
 
-    # TODO FIXME unit
     @property
     def gravity(self):
         pxr = self._kernel._pxr
@@ -534,28 +552,51 @@ class SceneViewer:
             self, 
             viewer: "SceneViewer",
             enabled: bool,
+            # TODO next?
+            mode: Literal["viewing", "editing"],
         ):
             self._viewer = viewer
             self._enabled = enabled
-            self._future: asyncio.Future | None = None
+            self._mode = mode
+            
+        _future: asyncio.Future | None = None
 
         async def _enable(self):
-            # TODO better ways to synchronize
-            self._viewer.mode = self._viewer.mode
-            self._viewer._scene._omni_ensure_current_stage()
+            # TODO rm better ways to synchronize
+            # self._viewer.mode = self._viewer.mode
+
+            scene = self._viewer._scene
+
+            settings = scene._kernel._carb.settings.get_settings()
+            match self._mode:
+                # TODO
+                case "viewing":
+                    settings.set("/app/window/hideUi", True)
+                    # await scene._kernel._app.next_update_async()
+                    # TODO this causes issues with the isaacsim registry in content browser. why????
+                    omni_enable_viewing_experience(kernel=scene._kernel)
+                case "editing":
+                    # TODO
+                    settings.set("/app/window/hideUi", False)
+                    # await scene._kernel._app.next_update_async()
+                    omni_enable_editing_experience(kernel=scene._kernel)
+                case _:
+                    raise ValueError(f"TODO")
+
+            # TODO
+            scene._omni_ensure_current_stage()
             self._viewer._omni_set_app_window_visible(True)
 
             if self._future is None or self._future.done():
-                self._future = self._viewer._scene._kernel._omni_ensure_future(
+                self._future = scene._kernel._omni_ensure_future(
                     asyncio.Event().wait()
                 )
-            # TODO
-            # self._viewer._scene._kernel.run_forever()
 
         async def _disable(self):
             # TODO
             self._viewer._omni_set_app_window_visible(False)
             # TODO destroy windows to save resource
+            omni_disable_ui(kernel=self._viewer._scene.kernel)
 
             if self._future is not None:
                 self._future.cancel()
@@ -581,13 +622,19 @@ class SceneViewer:
                 self._disable()
             )
 
-    def show(self, enabled: bool = True):
+    # TODO cache???
+    def show(
+        self, 
+        enabled: bool = True, 
+        mode: Literal["viewing", "editing"] = "viewing",
+    ):
         return self._ShowController(
             viewer=self,
             enabled=enabled, 
+            mode=mode,
         )
 
-    # TODO
+    # TODO deprecate #############################
     @property
     def mode(self) -> Literal["viewing", "editing"] | None:
         settings = self._scene._kernel._carb.settings.get_settings()
@@ -616,6 +663,7 @@ class SceneViewer:
                 ...
             case _:
                 raise ValueError(f"TODO")
+    # TODO deprecate #############################
 
     # TODO
     @property

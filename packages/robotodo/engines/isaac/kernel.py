@@ -168,16 +168,11 @@ class Kernel:
                 app_window.startup()
                 omni_app_window_factory.set_default_window(app_window)
 
-            # TODO necesito??
-            # carb_app_window = app_window.get_window()
-            # if carb_app_window is not None:
-            #     if carb_windowing_iface is not None:
-            #         carb_windowing_iface.hide_window(carb_app_window)
-
             renderer = omni.kit.renderer.bind.acquire_renderer_interface()
             renderer.startup()
             # TODO NOTE this flashes the window (by 1 frame?)
             renderer.attach_app_window(app_window)
+            # renderer.freeze_app_window(app_window, True)
 
             carb_app_window = app_window.get_window()
             if carb_app_window is not None:
@@ -213,17 +208,17 @@ class Kernel:
             "--portable", # run as portable to prevent writing extra files to user directory
             "--reset-user",
 
-            "--/app/content/emptyStageOnStart=false",
-
-            # TODO
-            # "--/exts/omni.replicator.core/Orchestrator/enabled=false",
-
             # "--/app/runLoops/main/rateLimitEnabled=false",
             # "--/app/runLoops/rendering_0/rateLimitEnabled=false",
             # "--/app/runLoops/present/rateLimitEnabled=false",
 
-            # "--/app/window/hideUi=true", # TODO
+            # TODO
+            "--/exts/omni.appwindow/autocreateAppWindow=false",
+
+            "--/app/docks/disabled=true",
+            "--/app/window/hideUi=true", # TODO
             "--/app/enableStdoutOutput=false",
+
             # logging
             "--/log/file=",
             "--/log/outputStreamLevel=Error",
@@ -236,6 +231,8 @@ class Kernel:
             # "--/physics/resetOnStop=false",
             "--/persistent/renderer/startupMessageDisplayed=true",
             
+            "--/app/content/emptyStageOnStart=false",
+
             # TODO
             "--/app/viewport/defaults/fillViewport=true",
             "--/app/viewport/defaults/hud/renderResolution/visible=true",
@@ -266,10 +263,10 @@ class Kernel:
             # "--/app/asyncRenderingLowLatency=false",
             # TODO NOTE causes issues with omni.replicator.core
             # "--/renderer/asyncInit=true",
-            # "--/exts/omni.replicator.core/Orchestrator/enabled=false",
             # # "--/exts/omni.replicator.core/numFrames=1",
-            # "--/omni/replicator/captureOnPlay=false",
+            "--/omni/replicator/captureOnPlay=false",
             # "--/app/settings/fabricDefaultStageFrameHistoryCount=3",
+            "--/exts/omni.replicator.core/Orchestrator/enabled=false",
         ])
         if extra_argv is not None:
             argv.extend(extra_argv)
@@ -302,6 +299,7 @@ class Kernel:
             # "omni.hydra.pxr",
             # TODO
             # "omni.replicator.core",
+            # TODO why?
             "omni.graph.core",
             # TODO ui: menu needs to be created before everything else??
             # "omni.kit.menu.utils",
@@ -398,6 +396,7 @@ class Kernel:
             return future.done()
         return future, should_invalidate
 
+    # TODO deprecate
     # TODO spin app loop only when necessary; exit loop when idle: i.e. no tasks beside internal omni tasks
     def run_forever(self):
         while True:
@@ -466,6 +465,7 @@ class Kernel:
     def _omni_import_module(self, module: str):
         return __import__(module)
 
+    # TODO 
     # TODO better lifecycle mgmt: detect if kernel is autostepping
     # TODO seealso: https://github.com/isaac-sim/IsaacSim/blob/aa503a9bbf92405bbbcfe5361e1c4a74fe10d689/source/extensions/isaacsim.simulation_app/isaacsim/simulation_app/simulation_app.py#L717
     def _omni_run_coroutine(
@@ -498,6 +498,7 @@ class Kernel:
         # TODO
         if True:
             while not task_or_future.done():
+                # TODO FIXME deadlock
                 self._app.update()
                 # TODO
             # # TODO
@@ -514,6 +515,41 @@ class Kernel:
         # TODO
         return future
     
+    # # TODO next
+    # # TODO seealso: https://github.com/isaac-sim/IsaacSim/blob/aa503a9bbf92405bbbcfe5361e1c4a74fe10d689/source/extensions/isaacsim.simulation_app/isaacsim/simulation_app/simulation_app.py#L717
+    # def _omni_run_coroutine(
+    #     self,
+    #     coroutine: Awaitable,
+    # ):
+    #     omni = self._omni
+    #     self._omni_enable_extension("omni.kit.async_engine")
+
+    #     future = concurrent.futures.Future()
+    #     task_or_future = omni.kit.async_engine.run_coroutine(coroutine)
+
+    #     app = self._app
+    #     loop = asyncio.get_event_loop()
+    #     def call_soon(func: ...):
+    #         # TODO
+    #         # return func()
+    #         task_or_future
+        
+    #         if loop.is_running():
+    #             loop.call_soon_threadsafe(func)
+    #         else:
+    #             func()
+
+    #     # TODO use ref count instead
+    #     def f():
+    #         if task_or_future.done():
+    #             future.set_result(task_or_future.result())
+    #             return
+    #         app.update()
+    #         call_soon(f)
+    #     call_soon(f)
+
+    #     return future
+
     # TODO
     def _omni_ensure_future(
         self,
@@ -539,10 +575,12 @@ class Kernel:
             # TODO 
             # if not app.is_running():
             #     # TODO
-            #     print("TODO")
-            try: app.update()
-            finally: pass
-            loop.call_soon_threadsafe(f)
+            #     print("TODO !!!!")
+            # try: app.update()
+            # finally: pass
+            app.update()
+            # TODO
+            loop.call_soon(f)
         loop.call_soon_threadsafe(f)
 
         match task_or_future:

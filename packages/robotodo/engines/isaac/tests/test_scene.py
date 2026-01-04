@@ -1,4 +1,5 @@
 
+import asyncio
 import importlib.resources
 
 import pytest
@@ -41,7 +42,6 @@ class TestScene:
     async def test_step(self):
         scene = Scene.create()
         assert (await scene.step(time=0, timestep=.5)) == .5
-        ...
 
     @pytest.mark.asyncio(loop_scope="session")
     async def test_properties(self):
@@ -55,3 +55,13 @@ class TestScene:
         scene.gravity = gravity_expected
         
         assert numpy.array_equiv(scene.gravity, gravity_expected)
+
+    # TODO
+    # @pytest.mark.benchmark
+    # @pytest.mark.asyncio(loop_scope="session")
+    # async def test_benchmark_(self, benchmark):
+    #     scene = Scene.create()
+    #     @benchmark
+    #     def _():
+    #         loop = asyncio.get_running_loop()
+    #         asyncio.run_coroutine_threadsafe(scene.step(), loop=loop).result()

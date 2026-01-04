@@ -13,7 +13,7 @@ Before you begin, complete the following check list:
     Run ``python3 --version`` to check.
 
   - Ensure Python package manager pip is installed and available as ``python3 -m pip``.
-    Run ``python3 -m ensurepip`` to make sure.
+    Run ``python3 -m ensurepip`` to install `pip` if not exists.
 
 - **Operating system**
 

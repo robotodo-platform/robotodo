@@ -64,16 +64,14 @@ def usd_create_stage(
 ) -> "pxr.Usd.Stage":
     if kernel is None:
         kernel = get_running_kernel()
-        # TODO
-        # kernel = default_kernel.ensure_running()
 
     pxr = kernel._pxr
     kernel._omni_import_module("pxr.Usd")
-    kernel._omni_import_module("pxr.UsdGeom")
+    # kernel._omni_import_module("pxr.UsdGeom")
 
     stage = pxr.Usd.Stage.CreateInMemory()
     # TODO customizable!!!  also necesito???
-    pxr.UsdGeom.SetStageUpAxis(stage, pxr.UsdGeom.Tokens.z)
+    # pxr.UsdGeom.SetStageUpAxis(stage, pxr.UsdGeom.Tokens.z)
 
     # # TODO this attaches the stage to the viewer and inits rendering+physics?
     # # TODO FIXME rm in the future when: 1) urdf stage= bug has been fixed 2) users are informed of the behavior
@@ -93,8 +91,9 @@ def usd_load_stage(
         kernel = get_running_kernel()
 
     pxr = kernel._pxr
+    # TODO
     kernel._omni_import_module("pxr.Usd")
-    kernel._omni_import_module("pxr.UsdGeom")
+    kernel._omni_import_module("pxr.Sdf")
 
     # TODO NOTE this allows remote urls to work?
     kernel._omni_enable_extension("omni.usd_resolver")
@@ -116,28 +115,105 @@ def usd_load_stage(
     return stage
 
 
+# TODO rm
+# def _todo_rm_usd_add_reference(
+#     stage: "pxr.Usd.Stage",
+#     paths: Iterable[str],
+#     resource: str | IO,
+#     # TODO
+#     kernel: Kernel | None = None,
+# ) -> list["pxr.Usd.Prim"]:
+#     if kernel is None:
+#         kernel = get_running_kernel()
+
+#     pxr = kernel._pxr
+#     omni = kernel._omni
+#     # TODO
+#     kernel._omni_enable_extension("omni.usd")
+#     kernel._omni_enable_extension("omni.usd.metrics.assembler")
+#     # TODO NOTE this allows remote urls to work?
+#     kernel._omni_enable_extension("omni.usd_resolver")
+
+#     match resource:
+#         case str():
+#             sdf_layer = pxr.Sdf.Layer.FindOrOpen(resource)
+#             if not sdf_layer:
+#                 raise RuntimeError(f"Could not get {pxr.Sdf.Layer} for {resource}")
+#         case io.IOBase():
+#             text = resource.read()
+#             if isinstance(text, bytes):
+#                 text = text.decode("utf-8")
+#             layer = pxr.Sdf.Layer.CreateAnonymous(".usda")
+#             if not layer.ImportFromString(text):
+#                 raise RuntimeError("TODO")
+#             sdf_layer = layer
+#         case _:
+#             raise ValueError("TODO")
+    
+#     stage_id = pxr.UsdUtils.StageCache.Get().GetId(stage).ToLongInt()
+#     ret_val = omni.metrics.assembler.core.get_metrics_assembler_interface().check_layers(
+#         stage.GetRootLayer().identifier, sdf_layer.identifier, stage_id,
+#     )
+#     should_use_add_reference_command = ret_val["ret_val"] != 0
+
+#     prims = []
+
+#     # TODO
+#     # with pxr.Sdf.ChangeBlock():
+#     if True:
+#         for path in paths:
+#             prim = stage.GetPrimAtPath(path)
+#             if not prim.IsValid():
+#                 # TODO make prim_type customizable??
+#                 prim = stage.DefinePrim(path, "Xform")    
+
+#             if should_use_add_reference_command:
+#                 try:
+#                     omni.usd.commands.AddReferenceCommand(
+#                         stage=stage,
+#                         prim_path=prim.GetPath(), 
+#                         reference=pxr.Sdf.Reference(resource),
+#                     ).do()
+#                 except Exception as error:
+#                     warnings.warn(
+#                         f"USD reference {resource} may have divergent units, "
+#                         f"please either enable extension `omni.usd.metrics.assembler` "
+#                         f"or convert into right units: {error}"
+#                     )
+#                     is_success = prim.GetReferences().AddReference(resource)
+#                     if not is_success:
+#                         raise RuntimeError(f"Invalid USD reference: {resource}")
+#             else:
+#                 is_success = prim.GetReferences().AddReference(resource)
+#                 if not is_success:
+#                     raise RuntimeError(f"Invalid USD reference: {resource}")
+            
+#             prims.append(prim)
+        
+#     return prims
+
+
+# TODO next
 def usd_add_reference(
     stage: "pxr.Usd.Stage",
     paths: Iterable[str],
     resource: str | IO,
     # TODO
     kernel: Kernel | None = None,
+    overwrite: bool = True,
 ) -> list["pxr.Usd.Prim"]:
     if kernel is None:
         kernel = get_running_kernel()
 
     pxr = kernel._pxr
-    omni = kernel._omni
-    # TODO
-    kernel._omni_enable_extension("omni.usd")
-    kernel._omni_enable_extension("omni.usd.metrics.assembler")
     # TODO NOTE this allows remote urls to work?
     kernel._omni_enable_extension("omni.usd_resolver")
 
+    layer = ...
     match resource:
         case str():
-            sdf_layer = pxr.Sdf.Layer.FindOrOpen(resource)
-            if not sdf_layer:
+            layer = pxr.Sdf.Layer.FindOrOpen(resource)
+            if not layer:
                 raise RuntimeError(f"Could not get {pxr.Sdf.Layer} for {resource}")
         case io.IOBase():
             text = resource.read()
@@ -146,51 +222,24 @@ def usd_add_reference(
             layer = pxr.Sdf.Layer.CreateAnonymous(".usda")
             if not layer.ImportFromString(text):
                 raise RuntimeError("TODO")
-            sdf_layer = layer
         case _:
             raise ValueError("TODO")
     
-    stage_id = pxr.UsdUtils.StageCache.Get().GetId(stage).ToLongInt()
-    ret_val = omni.metrics.assembler.core.get_metrics_assembler_interface().check_layers(
-        stage.GetRootLayer().identifier, sdf_layer.identifier, stage_id,
-    )
-    should_use_add_reference_command = ret_val["ret_val"] != 0
+    if overwrite:
+        with pxr.Sdf.ChangeBlock():
+            for path in paths:
+                stage.RemovePrim(path)
 
-    prims = []
-
-    # TODO
-    # with pxr.Sdf.ChangeBlock():
-    if True:
+    # TODO customizable??
+    target_layer = stage.GetEditTarget().GetLayer()
+    with pxr.Sdf.ChangeBlock():
+        layer_ref = pxr.Sdf.Reference(layer.identifier)
         for path in paths:
-            prim = stage.GetPrimAtPath(path)
-            if not prim.IsValid():
-                # TODO make prim_type customizable??
-                prim = stage.DefinePrim(path, "Xform")    
-
-            if should_use_add_reference_command:
-                try:
-                    omni.usd.commands.AddReferenceCommand(
-                        stage=stage,
-                        prim_path=prim.GetPath(), 
-                        reference=pxr.Sdf.Reference(resource),
-                    ).do()
-                except Exception as error:
-                    warnings.warn(
-                        f"USD reference {resource} may have divergent units, "
-                        f"please either enable extension `omni.usd.metrics.assembler` "
-                        f"or convert into right units: {error}"
-                    )
-                    is_success = prim.GetReferences().AddReference(resource)
-                    if not is_success:
-                        raise RuntimeError(f"Invalid USD reference: {resource}")
-            else:
-                is_success = prim.GetReferences().AddReference(resource)
-                if not is_success:
-                    raise RuntimeError(f"Invalid USD reference: {resource}")
+            prim_spec = pxr.Sdf.CreatePrimInLayer(target_layer, path)
+            prim_spec.referenceList.Add(layer_ref)
             
-            prims.append(prim)
-        
-    return prims
+    return [stage.DefinePrim(path) for path in paths]
+
 
 
 import os
@@ -205,13 +254,13 @@ def usd_import_urdf(
 ):
     pxr = kernel._pxr
     # TODO
-    # TODO NOTE BUG isaacsim.asset.importer.urdf prior to 2.4.27 has `.rotateMeshX` for `.dae` files which causes the links to be rotated!!!
+    # NOTE BUG isaacsim.asset.importer.urdf prior to 2.4.27 has `.rotateMeshX` for `.dae` files which causes the links to be rotated!!!
     # https://github.com/isaac-sim/IsaacSim/commit/e680e71274626b275d5dbe755f04ccdea7bbe97c#diff-8f3f54a270af13942c9904d254c27992c5eed50f6addf95ce31060ea97c1c0ffL267
     kernel._omni_enable_extension("isaacsim.asset.importer.urdf")
     isaacsim = kernel._omni_import_module("isaacsim.asset.importer.urdf")
 
     with tempfile.TemporaryDirectory() as tmpdir:
-        usd_path = os.path.join(tmpdir, "todo.usd")
+        usd_path = os.path.join(tmpdir, "_.usd")
 
         urdf_import_config = isaacsim.asset.importer.urdf.URDFCreateImportConfig().do()
         urdf_import_config.make_default_prim = True  # Make the robot the default prim in the scene
@@ -531,6 +580,7 @@ def usd_compute_geometry(
         
 
 # TODO doc
+# TODO FIXME lacking usd context may result in crash!!!
 def usd_get_stage_id(stage: "pxr.Usd.Stage", kernel: Kernel) -> int:
     r"""
     TODO doc

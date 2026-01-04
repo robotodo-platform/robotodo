@@ -437,9 +437,9 @@ class Articulation(ProtoArticulation):
             for maybe_root_prim in pxr.Usd.PrimRange(
                 prim, 
                 # TODO rm???
-                # pxr.Usd.TraverseInstanceProxies(
-                #     pxr.Usd.PrimAllPrimsPredicate
-                # ),
+                pxr.Usd.TraverseInstanceProxies(
+                    pxr.Usd.PrimAllPrimsPredicate
+                ),
             )
             if maybe_root_prim.HasAPI(pxr.UsdPhysics.ArticulationRootAPI)
         ]
@@ -469,7 +469,7 @@ class Articulation(ProtoArticulation):
         except Exception as error:
             raise RuntimeError(
                 f"Failed to create articulation physics view from "
-                f"resolved USD root joint paths (are they valid?): "
+                f"resolved USD prim paths (are they valid?): "
                 f"{resolved_root_paths}"
             ) from error
         return articulation_view, should_invalidate
