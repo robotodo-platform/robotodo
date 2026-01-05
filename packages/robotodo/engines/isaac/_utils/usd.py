@@ -85,6 +85,8 @@ def usd_create_stage(
 
 def usd_load_stage(
     resource: str | IO,
+    # TODO format
+    # format: Literal[".usda", Any] = ".usda",
     kernel: Kernel | None = None,
 ) -> "pxr.Usd.Stage":
     if kernel is None:
@@ -373,7 +375,6 @@ class USDPrimPathExpressionRef(USDPrimRef):
         ]
 
 
-# TODO FIXME: matrices in USD are NOT in col-major!!!
 class USDXformView:
     __slots__ = ["_prims_ref", "_kernel"]
 
@@ -422,7 +423,7 @@ class USDXformView:
 
         return Pose.from_matrix(
             numpy.stack([
-                # NOTE matrices in USD are in col-major hence transpose
+                # NOTE matrices in USD are in row-major hence transpose
                 numpy.transpose(
                     # TODO
                     pxr.UsdGeom.Imageable(prim)
@@ -580,7 +581,7 @@ def usd_compute_geometry(
         
 
 # TODO doc
-# TODO FIXME lacking usd context may result in crash!!!
+# TODO FIXME lacking usd context may result in crash?
 def usd_get_stage_id(stage: "pxr.Usd.Stage", kernel: Kernel) -> int:
     r"""
     TODO doc
@@ -603,7 +604,7 @@ def usd_get_stage_id(stage: "pxr.Usd.Stage", kernel: Kernel) -> int:
     stage_id = stage_cache.GetId(stage).ToLongInt()
     if stage_id < 0:
         # TODO better msg
-        warnings.warn("TODO usd stage cache")
+        # warnings.warn("TODO usd stage cache")
         stage_id = stage_cache.Insert(stage).ToLongInt()
     return stage_id
 

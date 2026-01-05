@@ -52,7 +52,7 @@ class PhysicsStepAsyncEventStream(BaseSubscriptionPartialAsyncEventStream[float]
         def physx_callback(timestep: float):
             result = callable(timestep)
             if asyncio.iscoroutine(result):
-                asyncio.create_task(result)
+                asyncio.ensure_future(result)
         sub = self._isaac_physx_interface.subscribe_physics_step_events(physx_callback)
         yield
         sub.unsubscribe()
@@ -139,8 +139,7 @@ class Scene(ProtoScene):
         match destination:
             case str():
                 # TODO
-                # stage.Export()
-                raise NotImplementedError("TODO")
+                stage.Export(destination)
             case None:
                 stage.Save()
                 stage.SaveSessionLayers()
@@ -364,17 +363,16 @@ class Scene(ProtoScene):
         self._kernel._omni_enable_extension("omni.timeline")
         self._kernel._omni_import_module("omni.timeline")
         return omni.timeline.acquire_timeline_interface().get_timeline()
-
+    
     class _PlayController:
+        _enabled: bool | None = None
+        _future: asyncio.Future | None = None
+
         def __init__(
             self,
             scene: "Scene",
-            enabled: bool,
         ):
             self._scene = scene
-            self._enabled = enabled
-            # TODO
-            self._future: asyncio.Future | None = None
 
         async def _enable(self):
             timeline = self._scene._omni_timeline
@@ -397,6 +395,8 @@ class Scene(ProtoScene):
                 self._future.cancel()
 
         def __await__(self):
+            if self._enabled is None:
+                return
             yield from (
                 self._enable().__await__()
                 if self._enabled else
@@ -404,6 +404,8 @@ class Scene(ProtoScene):
             )
 
         async def __aenter__(self):
+            if self._enabled is None:
+                return
             await (
                 self._enable()
                 if self._enabled else
@@ -411,17 +413,23 @@ class Scene(ProtoScene):
             )
 
         async def __aexit__(self, *_):
+            if self._enabled is None:
+                return
             await (
                 self._enable()
                 if not self._enabled else
                 self._disable()
             )
 
+    # TODO
+    @functools.cached_property
+    def _play_controller(self):
+        return self._PlayController(self)
+
     def play(self, enabled: bool = True):
-        return self._PlayController(
-            scene=self,
-            enabled=enabled,
-        )
+        controller = self._play_controller
+        controller._enabled = enabled
+        return controller
 
     # TODO DEPRECATE in favor of `await scene.play()` ##################
     @property
@@ -551,15 +559,12 @@ class SceneViewer:
         def __init__(
             self, 
             viewer: "SceneViewer",
-            enabled: bool,
-            # TODO next?
-            mode: Literal["viewing", "editing"],
         ):
             self._viewer = viewer
-            self._enabled = enabled
-            self._mode = mode
-            
-        _future: asyncio.Future | None = None
+
+        _enabled: bool | None = None
+        _mode: Literal["viewing", "editing"] | None = None
+        _future: asyncio.Future | None = None            
 
         async def _enable(self):
             # TODO rm better ways to synchronize
@@ -580,6 +585,8 @@ class SceneViewer:
                     settings.set("/app/window/hideUi", False)
                     # await scene._kernel._app.next_update_async()
                     omni_enable_editing_experience(kernel=scene._kernel)
+                case None:
+                    pass
                 case _:
                     raise ValueError(f"TODO")
 
@@ -602,6 +609,8 @@ class SceneViewer:
                 self._future.cancel()
 
         def __await__(self):
+            if self._enabled is None:
+                return
             yield from (
                 self._enable().__await__()
                 if self._enabled else
@@ -609,6 +618,8 @@ class SceneViewer:
             )
 
         async def __aenter__(self):
+            if self._enabled is None:
+                return
             await (
                 self._enable()
                 if self._enabled else
@@ -616,11 +627,18 @@ class SceneViewer:
             )
 
         async def __aexit__(self, *_):
+            if self._enabled is None:
+                return
             await (
                 self._enable()
                 if not self._enabled else
                 self._disable()
             )
+
+    # TODO
+    @functools.cached_property
+    def _show_controller(self):
+        return self._ShowController(self)
 
     # TODO cache???
     def show(
@@ -628,11 +646,10 @@ class SceneViewer:
         enabled: bool = True, 
         mode: Literal["viewing", "editing"] = "viewing",
     ):
-        return self._ShowController(
-            viewer=self,
-            enabled=enabled, 
-            mode=mode,
-        )
+        controller = self._show_controller
+        controller._enabled = enabled
+        controller._mode = mode
+        return controller
 
     # TODO deprecate #############################
     @property

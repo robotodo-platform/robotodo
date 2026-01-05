@@ -17,12 +17,16 @@ Before you begin, complete the following check list:
 
 - **Operating system**
 
-  - **Linux**: Check your GLIBC version with ``ldd --version``.
-    Upgrade your distribution if GLIBC is below **2.35**. 
-    Find supported versions of common distributions 
-    `here <https://gist.github.com/richardlau/6a01d7829cc33ddab35269dacc127680>`_. [#ref-isaacsim_pip]_
+  - **Linux**: 
+    - Check your GLIBC version with ``ldd --version``.
+      Upgrade your distribution if GLIBC is below **2.35**. 
+      Find supported versions of common distributions 
+      `here <https://gist.github.com/richardlau/6a01d7829cc33ddab35269dacc127680>`_. [#ref-isaacsim_pip]_
+    - If you are in a conda environment, it may be necessary to run ``conda install 'libstdcxx>11'``
+      to get rid of ``libstdc++``-related errors.
 
-  - **Windows**: You may need to enable `long path support <https://pip.pypa.io/warnings/enable-long-paths>`_ 
+  - **Windows**: 
+    You may need to enable `long path support <https://pip.pypa.io/warnings/enable-long-paths>`_ 
     to avoid installation errors caused by path length limits. [#ref-isaacsim_pip]_
 
 

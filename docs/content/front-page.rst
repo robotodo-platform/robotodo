@@ -6,7 +6,7 @@ Overview
 
 ``robotodo.engines.isaac`` is a member simulation engine of the ``robotodo`` platform.
 It is based on NVIDIA Omniverse and Isaac Sim. As a result, when using the engine, you gain
-additional features such as photo-realistic rendering, interoperation with CAD tools, and
+additional features such as photorealistic rendering, interoperability with CAD tools, and
 collaborative scene editing.
 
 ``robotodo`` is an open platform aimed at making robotics truly accessible by unifying sim+real

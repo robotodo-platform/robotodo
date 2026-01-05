@@ -11,7 +11,7 @@ import functools
 from typing import Any, Literal, NamedTuple
 
 # TODO
-# import warp
+import warp
 import torch
 import numpy
 import einops
@@ -167,6 +167,8 @@ class Camera(ProtoCamera):
         if hydra_engine_name not in usd_context.get_attached_hydra_engine_names():
             omni.usd.create_hydra_engine(hydra_engine_name, usd_context)
 
+    _omni_bypass_raytracing_bug: bool = True
+
     @functools.cache
     def _omni_get_render_product(self, resolution: Resolution):
         self._omni_ensure_rendering()
@@ -193,20 +195,21 @@ class Camera(ProtoCamera):
             False,
         )
 
-        match render_product.hydra_texture.hydra_engine:
-            case "rtx":
-                match settings.get("/rtx/rendermode"):
-                    case "RaytracedLighting":
-                        warnings.warn(
-                            f"RTX real-time mode has a bug that prevents tile > 1 rendering "
-                            f"from working properly. Coercing to path-tracing mode. "
-                            f"For more information, see https://github.com/isaac-sim/IsaacSim/issues/367"
-                        )
-                        settings.set("/rtx/rendermode", "PathTracing")
-                    case _:
-                        ...
-            case _:
-                pass
+        if self._omni_bypass_raytracing_bug:
+            match render_product.hydra_texture.hydra_engine:
+                case "rtx":
+                    match settings.get("/rtx/rendermode"):
+                        case "RaytracedLighting":
+                            warnings.warn(
+                                f"RTX real-time mode has a bug that prevents tile > 1 rendering "
+                                f"from working properly. Coercing to path-tracing mode. "
+                                f"For more information, see https://github.com/isaac-sim/IsaacSim/issues/367"
+                            )
+                            settings.set("/rtx/rendermode", "PathTracing")
+                        case _:
+                            ...
+                case _:
+                    pass
 
         return render_product
 
@@ -267,36 +270,49 @@ class Camera(ProtoCamera):
         frame_tiled = ...
 
         while True:
-            # TODO
-            if self._omni_use_synchronization:
-                omni = self._scene._kernel._omni
-                self._scene._kernel._omni_enable_extension("omni.replicator.core")
-                settings = self._scene._kernel._carb.settings.get_settings()
-                # TODO NOTE enable frame gate
-                settings.set("/exts/omni.replicator.core/Orchestrator/enabled", True)
+            
+            # TODO allow opt-out via contextmanager
+            if True:
+                # TODO
+                if self._omni_use_synchronization:
+                    omni = self._scene._kernel._omni
+                    self._scene._kernel._omni_enable_extension("omni.replicator.core")
+                    settings = self._scene._kernel._carb.settings.get_settings()
+                    # TODO NOTE enable frame gate
+                    settings.set("/exts/omni.replicator.core/Orchestrator/enabled", True)
 
-                self._scene._omni_ensure_current_stage()
-                # TODO
-                # self._scene._kernel._omni_ensure_future
-                # TODO
-                # await omni.replicator.core.orchestrator.step_async(
-                #     delta_time=0,
-                #     pause_timeline=False,
-                #     wait_for_render=True,
-                # )
-                await self._scene._kernel._omni_ensure_future(
-                    omni.replicator.core.orchestrator.step_async(
-                        delta_time=0,
-                        pause_timeline=False,
-                        wait_for_render=True,
+                    self._scene._omni_ensure_current_stage()
+                    # TODO
+                    # self._scene._kernel._omni_ensure_future
+                    # TODO
+                    # await omni.replicator.core.orchestrator.step_async(
+                    #     delta_time=0,
+                    #     pause_timeline=False,
+                    #     wait_for_render=True,
+                    # )
+                    await self._scene._kernel._omni_ensure_future(
+                        omni.replicator.core.orchestrator.step_async(
+                            delta_time=0,
+                            pause_timeline=False,
+                            wait_for_render=True,
+                        )
                     )
-                )
-            else:
-                # TODO
-                settings = self._scene._kernel._carb.settings.get_settings()
-                # TODO restore
-                settings.set("/exts/omni.replicator.core/Orchestrator/enabled", False)
-                ...
+                else:
+                    # TODO
+                    settings = self._scene._kernel._carb.settings.get_settings()
+                    # TODO restore
+                    settings.set("/exts/omni.replicator.core/Orchestrator/enabled", False)
+                    ...
+
+                    # TODO request render
+                    # await self._scene._kernel._omni_ensure_future(
+                    #     self._scene._omni_usd_context.next_frame_async()
+                    # )
+
+                    # TODO rm??
+                    await self._scene._kernel._omni_ensure_future(
+                        self._scene._kernel._app.next_update_async()
+                    )
 
             frame_tiled = render_annotator.get_data(
                 # TODO
@@ -307,16 +323,9 @@ class Camera(ProtoCamera):
             if frame_tiled.size != 0:
                 break
 
-            await self._scene._kernel._omni_ensure_future(
-                self._scene._kernel._app.next_update_async()
-            )
-
         # TODO NOTE ensure dim
         if frame_tiled.ndim == 2:
             frame_tiled = frame_tiled.reshape((*frame_tiled.shape, 1))
-
-        # TODO
-        import warp
 
         res = einops.rearrange(
             warp.to_torch(frame_tiled),

@@ -51,9 +51,17 @@ def _omni_create_app(argv: list[str] = []) -> "omni.kit.app.IApp":
         # asyncio.run = asyncio_run_orig
 
     with _omni_undo_monkeypatching():
-        import isaacsim
-        isaacsim.bootstrap_kernel()
-        # from isaacsim.simulation_app import AppFramework
+        try:
+            import isaacsim
+            isaacsim.bootstrap_kernel()
+        except Exception as error:
+            raise RuntimeError(
+                f"Failed to load the isaacsim kernel. To possibly resolve the problem: "
+                f"- If you are in a conda environment, run `conda install 'libstdcxx>11'`. "
+                f"- If you are using Linux, also run `ldd --version` to check your GLIC version "
+                f"and upgrade your Linux distribution if the version is below 2.35. "
+                f"For more information, see https://robotodo-isaac.readthedocs.io/en/latest/content/manuals/tutorial-000_installation.html"
+            ) from error
 
         try:
             import isaacsim.kit.kit_app
@@ -66,8 +74,8 @@ def _omni_create_app(argv: list[str] = []) -> "omni.kit.app.IApp":
             kit_app = omni.kit_app.KitApp()
 
         # TODO
-        # nest_asyncio.apply()
-        nest_asyncio._patch_loop(asyncio.get_event_loop())
+        nest_asyncio.apply()
+        # nest_asyncio._patch_loop(asyncio.get_event_loop())
 
         kit_app.startup([
             *argv,
@@ -229,6 +237,9 @@ class Kernel:
             # TODO NOTE make users reset manually??
             # TODO https://docs.omniverse.nvidia.com/kit/docs/omni_physics/108.0/dev_guide/settings.html#_CPPv419kSettingResetOnStop
             # "--/physics/resetOnStop=false",
+
+            "--/foundation/verifyOsVersion/enabled=false",
+            
             "--/persistent/renderer/startupMessageDisplayed=true",
             
             "--/app/content/emptyStageOnStart=false",
@@ -254,7 +265,7 @@ class Kernel:
             # TODO
             # "--/exts/omni.kit.async_engine/updateSubscriptionOrder=0",
             "--/exts/omni.kit.async_engine/keep_loop_running=false",
-            "--/exts/omni.kit.async_engine/spinLoopOncePerUpdate=true",
+            # "--/exts/omni.kit.async_engine/spinLoopOncePerUpdate=true",
 
             # TODO
             # "--/app/asyncRendering=true",
@@ -265,8 +276,14 @@ class Kernel:
             # "--/renderer/asyncInit=true",
             # # "--/exts/omni.replicator.core/numFrames=1",
             "--/omni/replicator/captureOnPlay=false",
-            # "--/app/settings/fabricDefaultStageFrameHistoryCount=3",
+            "--/app/settings/fabricDefaultStageFrameHistoryCount=3",
             "--/exts/omni.replicator.core/Orchestrator/enabled=false",
+
+            # TODO
+            "--enable", "usdrt.scenegraph",
+            "--enable", "omni.hydra.usdrt_delegate",
+            "--/app/useFabricSceneDelegate=true",
+            "--/rtx/hydra/readTransformsFromFabricInRenderDelegate=true",
         ])
         if extra_argv is not None:
             argv.extend(extra_argv)
@@ -399,6 +416,10 @@ class Kernel:
     # TODO deprecate
     # TODO spin app loop only when necessary; exit loop when idle: i.e. no tasks beside internal omni tasks
     def run_forever(self):
+        # TODO
+        import warnings
+        warnings.warn(DeprecationWarning(f"Deprecated"))
+
         while True:
             task, should_invalidate = self._run_forever_cache
             if should_invalidate():
@@ -435,6 +456,16 @@ class Kernel:
         self._app
         self._omni_enable_extension("omni.usd.libs")
         return __import__("pxr")
+    
+    @functools.cached_property
+    def _usdrt(self):
+        # TODO !!!!
+        self._app
+        self._omni_enable_extensions([
+            "usdrt.scenegraph",
+            "omni.hydra.usdrt_delegate",
+        ])
+        return __import__("usdrt")
 
     def _omni_enable_extension(
         self, 
@@ -465,7 +496,7 @@ class Kernel:
     def _omni_import_module(self, module: str):
         return __import__(module)
 
-    # TODO 
+    # TODO deprecate??
     # TODO better lifecycle mgmt: detect if kernel is autostepping
     # TODO seealso: https://github.com/isaac-sim/IsaacSim/blob/aa503a9bbf92405bbbcfe5361e1c4a74fe10d689/source/extensions/isaacsim.simulation_app/isaacsim/simulation_app/simulation_app.py#L717
     def _omni_run_coroutine(
@@ -551,6 +582,94 @@ class Kernel:
     #     return future
 
     # TODO
+    # _todo_lock = threading.Lock()
+
+
+    class _Runner:
+        def __init__(self, app: ...):
+            self._app = app
+            self._ref_count = 0
+
+        @functools.cached_property
+        def _cached_future(self):
+            async def _impl():
+                while self._ref_count > 0:
+                    self._app.update()
+                    await asyncio.sleep(0)
+            return asyncio.create_task(_impl())
+            
+        def _ensure_future(self):
+            future = self._cached_future
+            if future.done():
+                del self._cached_future
+            return self._cached_future
+
+        def acquire(self):
+            self._ref_count += 1
+            self._ensure_future()
+
+        def release(self):
+            if self._ref_count > 0:
+                self._ref_count -= 1
+
+    # TODO invalidate
+    @functools.cached_property
+    def _runner(self):
+        return self._Runner(self._app)
+
+    # TODO rm
+    # def _omni_ensure_future(
+    #     self,
+    #     coroutine: Awaitable,
+    # ) -> asyncio.Future:
+    #     omni = self._omni
+    #     self._omni_enable_extension("omni.kit.async_engine")
+
+    #     # TODO
+    #     task_or_future = omni.kit.async_engine.run_coroutine(coroutine)
+    #     loop = task_or_future.get_loop()
+
+    #     # _is_done = False
+    #     # def _todo_done_callback(future: ...):
+    #     #     nonlocal _is_done
+    #     #     _is_done = True
+    #     # task_or_future.add_done_callback(_todo_done_callback)
+        
+
+    #     # TODO
+    #     # loop = asyncio.get_event_loop()
+    #     # task_or_future = asyncio.ensure_future(coroutine, loop=loop)
+
+    #     # TODO use ref count instead
+    #     app = self._app
+    #     def f(f_self: ..., task_or_future: ...):
+    #         # nonlocal _is_done
+    #         # if _is_done:
+    #         #     return
+    #         if task_or_future.done():
+    #             return
+    #         # TODO 
+    #         # if not app.is_running():
+    #         #     # TODO
+    #         #     print("TODO !!!!")
+    #         # try: app.update()
+    #         # finally: pass
+    #         # TODO
+    #         app.update()
+    #         # TODO
+    #         loop.call_soon(f_self, f_self, task_or_future)
+    #     loop.call_soon_threadsafe(f, f, task_or_future)
+
+    #     match task_or_future:
+    #         case _ if asyncio.isfuture(task_or_future):
+    #             return task_or_future
+    #         case concurrent.futures.Future():
+    #             return asyncio.wrap_future(task_or_future)
+    #         case _:
+    #             # TODO
+    #             raise ValueError(f"TODO: {task_or_future}")
+    
+    # TODO
     def _omni_ensure_future(
         self,
         coroutine: Awaitable,
@@ -558,30 +677,12 @@ class Kernel:
         omni = self._omni
         self._omni_enable_extension("omni.kit.async_engine")
 
-        # TODO add to list instead
-        # self.run_forever()
-
+        # TODO
         task_or_future = omni.kit.async_engine.run_coroutine(coroutine)
-        # task_or_future = asyncio.ensure_future(coroutine, loop=loop)
-
-        # return task_or_future
-
-        app = self._app
-        loop = asyncio.get_event_loop()
-        # TODO use ref count instead
-        def f():
-            if task_or_future.done():
-                return
-            # TODO 
-            # if not app.is_running():
-            #     # TODO
-            #     print("TODO !!!!")
-            # try: app.update()
-            # finally: pass
-            app.update()
-            # TODO
-            loop.call_soon(f)
-        loop.call_soon_threadsafe(f)
+        self._runner.acquire()
+        def _todo_done_callback(_future: ...):
+            self._runner.release()
+        task_or_future.add_done_callback(_todo_done_callback)
 
         match task_or_future:
             case _ if asyncio.isfuture(task_or_future):
@@ -591,7 +692,7 @@ class Kernel:
             case _:
                 # TODO
                 raise ValueError(f"TODO: {task_or_future}")
-    
+
 
 default_kernel = Kernel()
 """
